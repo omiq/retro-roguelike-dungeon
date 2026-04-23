@@ -1,8 +1,8 @@
-# retro-c
+# Retro Roguelike Dungeon
 
 Cross-platform retro roguelike in C89. One codebase, many 8-bit targets.
 
-**Status:** Phase 0+1 skeleton (2026-04-23). Previous monolithic sources are
+**Status:** Phase 0+1 refactor (2026-04-23). Previous monolithic sources are
 frozen under `ARCHIVE_pre_refactor/` and being migrated module by module.
 
 ## Layout
