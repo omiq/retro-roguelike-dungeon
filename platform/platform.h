@@ -1,8 +1,8 @@
 /*
  * platform.h — portable adapter API for retro-c dungeon.
  * One plat_<target>.c per platform implements this.
- * game/*.c must NOT include conio.h, POKE macros, __C64__ ifdefs, or
- * platform-specific screen widths. Go through this header.
+ * game source files must not include conio.h, POKE macros, __C64__
+ * ifdefs, or platform-specific screen widths. Go through this header.
  */
 #ifndef PLATFORM_H
 #define PLATFORM_H
