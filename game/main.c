@@ -1,15 +1,13 @@
 /*
- * main.c — Phase 2 game loop.
- * Loads map (ported from ARCHIVE_pre_refactor/map.h), draws walls/floor/doors
- * + static entity spawns (enemies, gold, potions, weapons), player moves
- * with wall collision. No AI or pickup logic yet — Phase 3.
+ * main.c — Phase 3 game loop.
+ * Turn-based: player moves -> resolves bump/pickup -> enemies take turn ->
+ * adjacent enemies damage player. Status bar shows HP / gold / damage.
+ * Q quits; game ends when player_hp reaches 0.
  */
 #include <stdint.h>
 #include "../platform/platform.h"
 #include "map.h"
-
-static uint8_t player_x, player_y;
-static glyph_t tile_under_player;   /* what was on the floor we stepped onto */
+#include "entity.h"
 
 static uint8_t colour_for_glyph(glyph_t g) {
     switch (g) {
@@ -26,8 +24,44 @@ static uint8_t colour_for_glyph(glyph_t g) {
     }
 }
 
-static void draw_map(void) {
-    uint8_t x, y;
+/* Status bar kept on a single reserved row below the map. */
+#define STATUS_ROW (MAP_MAX_H - 1)
+static char  status_buf[41];
+
+static void u8_to_str(uint8_t v, char *out) {
+    uint8_t h = v / 100;
+    uint8_t t = (v / 10) % 10;
+    uint8_t o = v % 10;
+    uint8_t p = 0;
+    if (h) out[p++] = '0' + h;
+    if (h || t) out[p++] = '0' + t;
+    out[p++] = '0' + o;
+    out[p] = '\0';
+}
+
+static void draw_status(void) {
+    uint8_t i;
+    char tmp[4];
+    for (i = 0; i < 40 && i < plat_screen_w(); i++) status_buf[i] = ' ';
+    status_buf[40] = '\0';
+    /* HP: */
+    status_buf[0] = 'H'; status_buf[1] = 'P'; status_buf[2] = ':';
+    u8_to_str(player_hp, tmp);
+    for (i = 0; tmp[i]; i++) status_buf[3 + i] = tmp[i];
+    /* GOLD: */
+    status_buf[9]  = 'G'; status_buf[10] = 'L'; status_buf[11] = 'D'; status_buf[12] = ':';
+    u8_to_str(player_gold, tmp);
+    for (i = 0; tmp[i]; i++) status_buf[13 + i] = tmp[i];
+    /* DMG: */
+    status_buf[19] = 'D'; status_buf[20] = 'M'; status_buf[21] = 'G'; status_buf[22] = ':';
+    u8_to_str(player_dmg, tmp);
+    for (i = 0; tmp[i]; i++) status_buf[23 + i] = tmp[i];
+
+    plat_puts(0, STATUS_ROW, status_buf, COL_CYAN);
+}
+
+static void render_all(uint8_t px, uint8_t py) {
+    uint8_t x, y, i;
     glyph_t g;
     plat_cls();
     for (y = 0; y < map_h; y++) {
@@ -36,55 +70,84 @@ static void draw_map(void) {
             plat_putc(x, y, g, colour_for_glyph(g));
         }
     }
+    for (i = 0; i < entity_count; i++) {
+        if (!entities[i].alive) continue;
+        plat_putc(entities[i].x, entities[i].y, entities[i].g,
+                  colour_for_glyph(entities[i].g));
+    }
+    plat_putc(px, py, G_PLAYER, COL_YELLOW);
+    draw_status();
 }
 
-static void draw_spawns(void) {
-    uint8_t i;
-    for (i = 0; i < map_spawn_count; i++) {
-        glyph_t g = map_spawns[i].g;
-        plat_putc(map_spawns[i].x, map_spawns[i].y, g, colour_for_glyph(g));
+static uint8_t step_onto(uint8_t *px, uint8_t *py, uint8_t nx, uint8_t ny) {
+    int8_t ei;
+    glyph_t target = map_get(nx, ny);
+    if (map_is_solid(target)) return 0;
+
+    ei = entity_at(nx, ny);
+    if (ei >= 0) {
+        entity_t *e = &entities[ei];
+        if (e->g == G_ENEMY) {
+            /* Bump attack. */
+            e->hp -= (int8_t)player_dmg;
+            if (e->hp <= 0) entity_kill((uint8_t)ei);
+            return 0;  /* player doesn't move on attack */
+        }
+        /* Pickup. */
+        switch (e->g) {
+            case G_GOLD:   player_gold++;                       break;
+            case G_POTION: if (player_hp < 250) player_hp += 3; break;
+            case G_WEAPON: player_dmg++;                        break;
+            default: break;
+        }
+        e->alive = 0;
     }
+    *px = nx;
+    *py = ny;
+    return 1;
 }
 
 int main(void) {
-    uint8_t key, nx, ny;
-    glyph_t target;
+    uint8_t key, nx, ny, px, py;
+    uint8_t hit;
 
     plat_init();
     plat_seed_rand(0x1234);
     map_load(0);
+    entity_init_from_map_spawns();
 
-    draw_map();
-    draw_spawns();
-
-    player_x = map_player_x;
-    player_y = map_player_y;
-    tile_under_player = G_FLOOR;
-    plat_putc(player_x, player_y, G_PLAYER, COL_YELLOW);
+    px = map_player_x;
+    py = map_player_y;
+    render_all(px, py);
 
     for (;;) {
         key = plat_key_wait();
-        nx = player_x;
-        ny = player_y;
+        nx = px; ny = py;
         switch (key) {
-            case K_UP:    if (player_y > 0)         ny = player_y - 1; break;
-            case K_DOWN:  if (player_y < map_h - 1) ny = player_y + 1; break;
-            case K_LEFT:  if (player_x > 0)         nx = player_x - 1; break;
-            case K_RIGHT: if (player_x < map_w - 1) nx = player_x + 1; break;
+            case K_UP:    if (py > 0)         ny = py - 1; break;
+            case K_DOWN:  if (py < map_h - 2) ny = py + 1; break;  /* -2 reserves status row */
+            case K_LEFT:  if (px > 0)         nx = px - 1; break;
+            case K_RIGHT: if (px < map_w - 1) nx = px + 1; break;
             case K_QUIT:  plat_shutdown(); return 0;
             default: continue;
         }
-        if (nx == player_x && ny == player_y) continue;
+        if (nx != px || ny != py) {
+            step_onto(&px, &py, nx, ny);
+        }
 
-        target = map_get(nx, ny);
-        if (map_is_solid(target)) continue;
+        /* Enemy turn. */
+        entity_ai_turn(px, py);
 
-        /* Restore tile we stepped off. */
-        plat_putc(player_x, player_y, tile_under_player,
-                  colour_for_glyph(tile_under_player));
-        tile_under_player = target;
-        player_x = nx;
-        player_y = ny;
-        plat_putc(player_x, player_y, G_PLAYER, COL_YELLOW);
+        /* Adjacent enemies damage player. */
+        hit = entity_adjacent_damage(px, py);
+        if (hit >= player_hp) {
+            player_hp = 0;
+            render_all(px, py);
+            plat_puts(0, 0, "YOU DIED - press Q", COL_RED);
+            for (;;) if (plat_key_wait() == K_QUIT) { plat_shutdown(); return 0; }
+        } else {
+            player_hp -= hit;
+        }
+        render_all(px, py);
     }
 }

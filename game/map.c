@@ -119,6 +119,11 @@ glyph_t map_get(uint8_t x, uint8_t y) {
     return map_tiles[y][x];
 }
 
+void map_set(uint8_t x, uint8_t y, glyph_t g) {
+    if (x >= map_w || y >= map_h) return;
+    map_tiles[y][x] = g;
+}
+
 uint8_t map_is_solid(glyph_t g) {
-    return (g == G_WALL || g == G_BORDER) ? 1 : 0;
+    return (g == G_WALL || g == G_BORDER || g == G_DOOR) ? 1 : 0;
 }

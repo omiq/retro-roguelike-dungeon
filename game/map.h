@@ -29,6 +29,7 @@ extern uint8_t     map_player_x, map_player_y;   /* from '@' marker */
 
 void    map_load(uint8_t room_index);
 glyph_t map_get(uint8_t x, uint8_t y);
+void    map_set(uint8_t x, uint8_t y, glyph_t g);
 uint8_t map_is_solid(glyph_t g);
 
 #endif
