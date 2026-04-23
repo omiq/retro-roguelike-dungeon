@@ -1,8 +1,8 @@
-# retro-c Roguelike Refactor Plan
+# Roguelike Refactor Plan
 
 Goal: take existing `dungeon_multi.c` (cc65, ~1265 LoC, mixed CBM ifdefs) and split into
 platform-agnostic game/ + thin platform/plat_*.c adapters so one codebase ships to:
-c64, pet, plus4, vic20, atari8, apple2, bbc, nes, gb, plus host (ncurses) for dev.
+c64, pet, plus4, expanded vic20?, atari 800XL, apple2e, bbc micro, nes, gb, plus desktop (ncurses) for dev.
 
 ## Target layout
 

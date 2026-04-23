@@ -1,4 +1,4 @@
-# retro-c Maintenance Guide
+# Roguelike Dungeon Code Maintenance Guide
 
 Quick reference for working on this codebase without re-breaking portability.
 Read this first every time you come back to the project.
