@@ -147,13 +147,11 @@ static uint8_t step_onto(uint8_t *px, uint8_t *py, uint8_t nx, uint8_t ny) {
     if (ei >= 0) {
         entity_t *e = &entities[ei];
         if (e->g == G_ENEMY) {
-            e->hp -= (int8_t)player_dmg;
-            if (e->hp <= 0) {
-                entity_kill((uint8_t)ei);
-                /* corpse glyph now on map; redraw cell. */
-                plat_putc(nx, ny, G_CORPSE, colour_for_glyph(G_CORPSE));
-            }
-            return 0;
+            /* Original mechanic: d20 vs armour+speed, miss = enemy free hit
+             * if player adjacent. entity_player_attack() in entity.c. */
+            uint8_t killed = entity_player_attack(*px, *py, nx, ny, player_dmg);
+            if (killed) plat_putc(nx, ny, G_CORPSE, colour_for_glyph(G_CORPSE));
+            return 0;  /* player stays put; bump consumed the turn */
         }
         /* Pickup. */
         switch (e->g) {
@@ -220,15 +218,13 @@ int main(void) {
                       move_events[i].g, colour_for_glyph(move_events[i].g));
         }
 
-        /* Adjacent enemies damage player. */
-        hit = entity_adjacent_damage(px, py);
-        if (hit >= player_hp) {
-            player_hp = 0;
+        /* Damage from enemies that bumped player is already applied inside
+         * entity_ai_turn -> enemy_attack_player; just check for death here. */
+        (void)hit;
+        if (player_hp == 0) {
             redraw_status_if_changed();
             plat_puts(0, 0, "YOU DIED - press Q", COL_RED);
             for (;;) if (plat_key_wait() == K_QUIT) { plat_shutdown(); return 0; }
-        } else {
-            player_hp -= hit;
         }
         redraw_status_if_changed();
 

@@ -49,4 +49,9 @@ void     entity_kill(uint8_t idx);           /* corpse on map, entity gone */
 void     entity_ai_turn(uint8_t px, uint8_t py);
 uint8_t  entity_adjacent_damage(uint8_t px, uint8_t py);
 
+/* Player bumps enemy at (ax, ay) with weapon damage. Returns 1 if enemy
+ * was killed this turn. Ported d20 + armour+speed hit check. */
+uint8_t  entity_player_attack(uint8_t px, uint8_t py,
+                              uint8_t ax, uint8_t ay, uint8_t weapon);
+
 #endif
