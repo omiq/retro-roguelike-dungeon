@@ -14,10 +14,18 @@
 #include "entity.h"
 #include "enemy_types.h"
 
+/* Player position */
+static uint8_t px, py;
+
+/* HP lost per door bump without a key (matches archive dungeon_multi). */
+#define DOOR_BUMP_HP_COST 10
+
 static uint8_t colour_for_glyph(glyph_t g) {
     switch (g) {
         case G_WALL:   return COL_WHITE;
-        case G_DOOR:   return COL_YELLOW;
+        case G_DOOR:
+        case G_DOOR_AJAR:
+                       return COL_YELLOW;
         case G_FLOOR:  return COL_BLUE;
         case G_ENEMY:  return COL_RED;
         case G_GOLD:   return COL_YELLOW;
@@ -192,13 +200,33 @@ static void initial_render(uint8_t px, uint8_t py) {
 static uint8_t step_onto(uint8_t *px, uint8_t *py, uint8_t nx, uint8_t ny) {
     int8_t ei;
     glyph_t target = map_get(nx, ny);
-    /* Door: needs a key, consumes one, converts to floor so future
-     * steps are free. Ported from raylib version '+' -> '-' (passable). */
-    if (target == G_DOOR) {
-        if (player_keys == 0) return 0;
-        player_keys--;
-        map_set(nx, ny, G_FLOOR);
-        plat_putc(nx, ny, G_FLOOR, colour_for_glyph(G_FLOOR));
+    /* Doors: key opens to floor in one step (archive + raylib).
+     * Without a key, bumping costs 10 HP and progresses the tile:
+     *   G_DOOR -> G_DOOR_AJAR (stay blocked this turn),
+     *   G_DOOR_AJAR -> G_FLOOR (stay blocked this turn; walk in next turn).
+     * At 0 HP you still pay the tile change; death is handled after the turn. */
+    if (target == G_DOOR || target == G_DOOR_AJAR) {
+        if (player_keys > 0) {
+            player_keys--;
+            map_set(nx, ny, G_FLOOR);
+            plat_putc(nx, ny, G_FLOOR, colour_for_glyph(G_FLOOR));
+        } else if (target == G_DOOR) {
+            if (player_hp <= DOOR_BUMP_HP_COST)
+                player_hp = 0;
+            else
+                player_hp -= DOOR_BUMP_HP_COST;
+            map_set(nx, ny, G_DOOR_AJAR);
+            plat_putc(nx, ny, G_DOOR_AJAR, colour_for_glyph(G_DOOR_AJAR));
+            return 0;
+        } else {
+            if (player_hp <= DOOR_BUMP_HP_COST)
+                player_hp = 0;
+            else
+                player_hp -= DOOR_BUMP_HP_COST;
+            map_set(nx, ny, G_FLOOR);
+            plat_putc(nx, ny, G_FLOOR, colour_for_glyph(G_FLOOR));
+            return 0;
+        }
     } else if (map_is_solid(target)) {
         return 0;
     }
@@ -232,73 +260,160 @@ static uint8_t step_onto(uint8_t *px, uint8_t *py, uint8_t nx, uint8_t ny) {
     return 1;
 }
 
-int main(void) {
-    uint8_t key, nx, ny, px, py;
-    uint8_t hit, i;
-
-    plat_init();
-    /* 0 → adapter picks a hardware entropy source (VIC raster, jiffy
-     * clock, etc). Fixed 0x1234 gave identical playthroughs every time. */
-    plat_seed_rand(0);
-    map_load(0);
+/* Load one map and rebuild state derived from that map:
+ * map tiles, spawned entities, and player spawn position. */
+static void load_map_state(uint8_t map_id) {
+    map_load(map_id);
     entity_init_from_map_spawns();
-
     px = map_player_x;
     py = map_player_y;
+}
+
+/* Program structure (high level):
+ * 1. Boot platform + attract sequence (title/demo; richer on capable platforms)
+ * 2. Playing: input → update → render; load next map when wired
+ * 3. Game over / win overlays: wait for logical keys, then replay or quit
+ * 4. Single shutdown on exit
+ *
+ * plat_key_wait() maps most letters to K_OTHER (not raw ASCII), so
+ * menus use K_FIRE (space/return/z) and K_QUIT only. */
+
+typedef enum {
+    STATE_ATTRACT = 0, /* attract mode before first play / replay / win */
+    STATE_PLAYING,     /* one turn at a time */
+    STATE_GAME_OVER,   /* wait: replay or quit */
+    STATE_WIN,         /* floor cleared; wait Q */
+    STATE_QUIT
+} game_state_t;
+
+static void platform_boot(void) {
+    plat_init();
+    plat_seed_rand(0);
+}
+
+/* New run: reset player stats, load map 0, full redraw. Does not re-init
+ * the platform (safe for “play again”). */
+static void start_new_run(void) {
+    direction_x = 1;
+    direction_y = 0;
+    player_hp    = 30;
+    player_dmg   = 10;
+    player_gold  = 0;
+    player_magic = 0;
+    player_idols = 0;
+    player_keys  = 0;
+    load_map_state(0);
     initial_render(px, py);
+}
 
-    for (;;) {
-        uint8_t moved;
-        uint8_t old_px = px, old_py = py;
+/* Placeholder attract: static text. On platforms that support it, this can
+ * grow into a timed demo / scrolling banner without changing the state name. */
+static void run_attract(void) {
+    plat_cls();
+    plat_puts(0, 0, "Dungeon  arrows/WASD  fire=Z/spc  Q=quit", COL_CYAN);
+    plat_puts(0, 1, "Press FIRE (space/return/Z) to start", COL_WHITE);
+}
 
-        key = plat_key_wait();
-        nx = px; ny = py;
-        switch (key) {
-            case K_UP:    if (py > 0)         ny = py - 1;
-                          direction_x = 0; direction_y = -1; break;
-            case K_DOWN:  if (py < map_h - 1) ny = py + 1;
-                          direction_x = 0; direction_y =  1; break;
-            case K_LEFT:  if (px > 0)         nx = px - 1;
-                          direction_x = -1; direction_y = 0; break;
-            case K_RIGHT: if (px < map_w - 1) nx = px + 1;
-                          direction_x =  1; direction_y = 0; break;
-            case K_FIRE:  cast_fireball(px, py); break;
-            case K_QUIT:  plat_shutdown(); return 0;
-            default: continue;
-        }
-        moved = 0;
-        if (nx != px || ny != py) moved = step_onto(&px, &py, nx, ny);
-        if (moved) {
-            /* Restore cell player left. */
-            redraw_cell(old_px, old_py);
-            /* Draw player at new cell. */
-            plat_putc(px, py, G_PLAYER, COL_YELLOW);
-        }
+/* One playing turn: block for input, move/attack, enemy phase, patch draw.
+ * Returns next state (stay PLAYING unless death, win, or quit). */
+static game_state_t run_playing_turn(void) {
+    uint8_t key, nx, ny, moved, i;
+    uint8_t old_px = px, old_py = py;
 
-        /* Enemy turn — fills move_events. */
-        entity_ai_turn(px, py);
-        for (i = 0; i < move_event_count; i++) {
-            /* old cell: show whatever map/other entity is there now. */
-            redraw_cell(move_events[i].ox, move_events[i].oy);
-            /* new cell: draw this enemy on top. */
-            plat_putc(move_events[i].nx, move_events[i].ny,
-                      move_events[i].g, colour_for_glyph(move_events[i].g));
-        }
+    key = plat_key_wait();
+    if (key == K_QUIT)
+        return STATE_QUIT;
 
-        /* Damage from enemies that bumped player is already applied inside
-         * entity_ai_turn -> enemy_attack_player; just check for death here. */
-        (void)hit;
-        if (player_hp == 0) {
-            redraw_status_if_changed();
-            plat_puts(0, 0, "YOU DIED - press Q", COL_RED);
-            for (;;) if (plat_key_wait() == K_QUIT) { plat_shutdown(); return 0; }
-        }
+    nx = px;
+    ny = py;
+    switch (key) {
+        case K_UP:    if (py > 0)         ny = py - 1;
+                      direction_x = 0; direction_y = -1; break;
+        case K_DOWN:  if (py < map_h - 1) ny = py + 1;
+                      direction_x = 0; direction_y =  1; break;
+        case K_LEFT:  if (px > 0)         nx = px - 1;
+                      direction_x = -1; direction_y = 0; break;
+        case K_RIGHT: if (px < map_w - 1) nx = px + 1;
+                      direction_x =  1; direction_y = 0; break;
+        case K_FIRE:  cast_fireball(px, py); break;
+        default:      return STATE_PLAYING;
+    }
+
+    moved = 0;
+    if (nx != px || ny != py)
+        moved = step_onto(&px, &py, nx, ny);
+    if (moved) {
+        redraw_cell(old_px, old_py);
+        plat_putc(px, py, G_PLAYER, COL_YELLOW);
+    }
+
+    entity_ai_turn(px, py);
+    for (i = 0; i < move_event_count; i++) {
+        redraw_cell(move_events[i].ox, move_events[i].oy);
+        plat_putc(move_events[i].nx, move_events[i].ny,
+                  move_events[i].g, colour_for_glyph(move_events[i].g));
+    }
+
+    /* Damage from bumped player already applied in entity_ai_turn. */
+    if (player_hp == 0) {
         redraw_status_if_changed();
+        plat_puts(0, 0, "GAME OVER  FIRE=again  Q=quit", COL_RED);
+        return STATE_GAME_OVER;
+    }
 
-        /* Win: collected every idol on this floor. */
-        if (idols_total > 0 && player_idols >= idols_total) {
-            plat_puts(0, 0, "ALL IDOLS FOUND - press Q", COL_YELLOW);
-            for (;;) if (plat_key_wait() == K_QUIT) { plat_shutdown(); return 0; }
+    redraw_status_if_changed();
+
+    if (idols_total > 0 && player_idols >= idols_total) {
+        plat_puts(0, 0, "ALL IDOLS FOUND - press Q", COL_YELLOW);
+        return STATE_WIN;
+    }
+
+    return STATE_PLAYING;
+}
+
+int main(void) {
+    game_state_t state = STATE_ATTRACT;
+
+    platform_boot();
+    run_attract();
+
+    while (1) {
+        switch (state) {
+        case STATE_ATTRACT: {
+            uint8_t k = plat_key_wait();
+            if (k == K_QUIT)
+                state = STATE_QUIT;
+            else if (k == K_FIRE) {
+                start_new_run();
+                state = STATE_PLAYING;
+            }
+            /* else stay in attract (frame already drawn) */
+            break;
+        }
+
+        case STATE_PLAYING:
+            state = run_playing_turn();
+            break;
+
+        case STATE_GAME_OVER: {
+            uint8_t k = plat_key_wait();
+            if (k == K_QUIT)
+                state = STATE_QUIT;
+            else if (k == K_FIRE) {
+                start_new_run();
+                state = STATE_PLAYING;
+            }
+            break;
+        }
+
+        case STATE_WIN:
+            if (plat_key_wait() == K_QUIT)
+                state = STATE_QUIT;
+            break;
+
+        case STATE_QUIT:
+            plat_shutdown();
+            return 0;
         }
     }
 }

@@ -69,12 +69,7 @@ void entity_init_from_map_spawns(void) {
         }
         entity_count++;
     }
-    player_hp    = 30;
-    player_dmg   = 10;
-    player_gold  = 0;
-    player_magic = 0;
-    player_idols = 0;
-    player_keys  = 0;
+
     idols_total  = 0;
     for (i = 0; i < entity_count; i++)
         if (entities[i].g == G_IDOL) idols_total++;

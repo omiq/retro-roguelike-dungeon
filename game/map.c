@@ -4,7 +4,7 @@
  * Templates stay as ASCII so they remain readable; load converts to glyph_t.
  *
  * ASCII legend (archive convention):
- *   '.' floor, '#' wall, '+' door, '@' player start,
+ *   '.' floor, '#' wall, '+' door, '-' door (ajar / forced), '@' player start,
  *   'K' key, 'G' goblin-ish enemy, 'R' rat enemy, 'H' enemy,
  *   'I' item, 'P' potion, '$' gold, '/' weapon, '%' corpse
  * Unknown chars default to G_FLOOR.
@@ -59,6 +59,7 @@ static glyph_t ascii_to_glyph(char c, uint8_t *is_spawn, glyph_t *spawn_g,
     switch (c) {
         case '#': return G_WALL;
         case '+': return G_DOOR;
+        case '-': return G_DOOR_AJAR;
         case '.': return G_FLOOR;
         case ' ': return G_SPACE;
         case '@': *is_spawn = 1; *spawn_g = G_PLAYER; return G_FLOOR;
@@ -139,5 +140,6 @@ void map_set(uint8_t x, uint8_t y, glyph_t g) {
 }
 
 uint8_t map_is_solid(glyph_t g) {
-    return (g == G_WALL || g == G_BORDER || g == G_DOOR) ? 1 : 0;
+    return (g == G_WALL || g == G_BORDER || g == G_DOOR || g == G_DOOR_AJAR) ? 1
+                                                                          : 0;
 }
