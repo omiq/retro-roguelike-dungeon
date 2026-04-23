@@ -14,7 +14,8 @@ static uint8_t screen_cols;
 static uint8_t screen_rows;
 
 static const char glyph_native[G_COUNT] = {
-    '.','#','+','@','E','$','!','/','>','%', ' ','*', 'h','*','&', '*', 'k','-'
+    '.','#','+','@','E','$','!','/','>','%', ' ','*', 'h','*','&', '*', 'k','-',
+    'G','R','T'
 };
 
 /* ncurses colour pairs 1..8 map to COL_* */

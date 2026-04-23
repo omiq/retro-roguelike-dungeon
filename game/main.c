@@ -47,6 +47,9 @@ static uint8_t colour_for_glyph(glyph_t g) {
                        return COL_YELLOW;
         case G_FLOOR:  return COL_BLUE;
         case G_ENEMY:  return COL_RED;
+        case G_FOE_GOBLIN: return COL_GREEN;
+        case G_FOE_RAT:    return COL_CYAN;
+        case G_FOE_THUG:   return COL_MAGENTA;
         case G_GOLD:   return COL_YELLOW;
         case G_POTION: return COL_MAGENTA;
         case G_WEAPON: return COL_CYAN;
@@ -87,6 +90,7 @@ static void cast_fireball(uint8_t px, uint8_t py) {
          * is at the endpoint. */
         if (c != G_FLOOR) break;
         /* If an enemy sits here, stop and let attack() resolve. */
+        /* Stop bolt on any floor entity (pickup or foe); impact only harms foes. */
         if (entity_at((uint8_t)fx, (uint8_t)fy) >= 0) break;
         plat_putc((uint8_t)fx, (uint8_t)fy, G_BOLT, COL_YELLOW);
         plat_delay_ms(80);
@@ -100,7 +104,7 @@ static void cast_fireball(uint8_t px, uint8_t py) {
      * original attack(10, fx, fy). */
     if (fx >= 0 && fy >= 0 && fx < map_w && fy < map_h) {
         int8_t ei = entity_at((uint8_t)fx, (uint8_t)fy);
-        if (ei >= 0 && entities[ei].alive && entities[ei].g == G_ENEMY) {
+        if (ei >= 0 && entities[ei].alive && enemy_glyph_is_foe(entities[ei].g)) {
             uint8_t killed = entity_player_attack(px, py,
                                                   (uint8_t)fx, (uint8_t)fy, 10);
             if (killed) plat_putc((uint8_t)fx, (uint8_t)fy,
@@ -142,9 +146,9 @@ static void build_status(void) {
     char tmp[4];
     for (i = 0; i < 40; i++) status_buf[i] = ' ';
     status_buf[40] = '\0';
-    /* Layout: "HP:nn MP:nn $:nn K:n I:n/nn" in 40 cols. */
+    /* Layout: "HP:nn  *:nn $:nn K:n I:n/nn" in 40 cols. */
     write_field("HP:", player_hp,    0);
-    write_field("*:", player_magic,  6);
+    write_field("*:", player_magic,  7);
     status_buf[14] = '$'; status_buf[15] = ':';
     u8_to_str(player_gold, tmp);
     for (i = 0; tmp[i]; i++) status_buf[16 + i] = tmp[i];
@@ -190,7 +194,7 @@ static void redraw_status_if_changed(void) {
 static uint8_t colour_for_entity(int8_t ei) {
     int8_t t;
     if (ei < 0) return COL_WHITE;
-    if (entities[ei].g == G_ENEMY) {
+    if (enemy_glyph_is_foe(entities[ei].g)) {
         t = entities[ei].type_idx;
         if (t >= 0 && t < ENEMY_TYPE_COUNT) return ENEMY_TYPES[t].colour;
     }
@@ -225,7 +229,7 @@ static void initial_render(uint8_t px, uint8_t py) {
     for (i = 0; i < entity_count; i++) {
         if (!entities[i].alive) continue;
         plat_putc(entities[i].x, entities[i].y, entities[i].g,
-                  colour_for_glyph(entities[i].g));
+                  colour_for_entity((int8_t)i));
     }
     plat_putc(px, py, G_PLAYER, COL_YELLOW);
     /* Force status draw on first render regardless of diff. */
@@ -273,7 +277,7 @@ static uint8_t step_onto(uint8_t *px, uint8_t *py, uint8_t nx, uint8_t ny) {
     ei = entity_at(nx, ny);
     if (ei >= 0) {
         entity_t *e = &entities[ei];
-        if (e->g == G_ENEMY) {
+        if (enemy_glyph_is_foe(e->g)) {
             /* Original mechanic: d20 vs armour+speed, miss = enemy free hit
              * if player adjacent. entity_player_attack() in entity.c. */
             uint8_t killed = entity_player_attack(*px, *py, nx, ny, player_dmg);
@@ -397,11 +401,16 @@ static game_state_t run_playing_turn(void) {
     }
 
     entity_ai_turn(px, py);
-    for (i = 0; i < move_event_count; i++) {
-        redraw_cell(move_events[i].ox, move_events[i].oy);
-        plat_putc(move_events[i].nx, move_events[i].ny,
-                  move_events[i].g, colour_for_glyph(move_events[i].g));
-    }
+        for (i = 0; i < move_event_count; i++) {
+            int8_t mei;
+            uint8_t mcol;
+            redraw_cell(move_events[i].ox, move_events[i].oy);
+            mei = entity_at(move_events[i].nx, move_events[i].ny);
+            mcol = (mei >= 0) ? colour_for_entity(mei)
+                              : colour_for_glyph(move_events[i].g);
+            plat_putc(move_events[i].nx, move_events[i].ny,
+                      move_events[i].g, mcol);
+        }
 
     /* Damage from bumped player already applied in entity_ai_turn. */
     if (player_hp == 0) {

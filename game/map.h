@@ -23,7 +23,7 @@ extern glyph_t map_tiles[MAP_MAX_H][MAP_MAX_W];
 typedef struct {
     uint8_t x, y;
     glyph_t g;
-    int8_t  type_idx;   /* ENEMY_TYPE_* when g == G_ENEMY, else -1 */
+    int8_t  type_idx;   /* ENEMY_TYPE_* when g is a G_FOE_* glyph, else -1 */
 } game_object_t;
 extern game_object_t map_game_objects[MAP_MAX_GAME_OBJECTS];
 extern uint8_t       map_game_object_count;

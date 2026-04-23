@@ -26,7 +26,7 @@
  * ASCII legend (matches ascii_to_glyph below)
  * --------------------------------------------
  *   '.' floor, '#' wall, '+' door, '-' door (ajar / forced open), '@' player,
- *   'G'/'R'/'K' enemies (goblin, rat, kobold), 'H' health, '*' magic, 'P' potion,
+ *   'G'/'R'/'T' enemies (goblin, rat, thug), 'H' health, '*' magic, 'P' potion,
  *   'I' idol, 'k' key, '$' gold, '/' weapon, '%' corpse, '>' stairs.
  * Unknown characters become G_FLOOR.
  */
@@ -57,21 +57,21 @@ static const char * const rooms[ROOM_COUNT][ROOM_H] = {
     {
         ".#################################......",
         ".#...................#...........#......",
-        ".#.@.....K...G.......#...R.......#......",
+        ".#.@.....T...G.......#...R.......#......",
         ".#...................+...........#......",
-        ".#....*P.........G...#.......I...#......",
+        ".#....*..........G...#.......I...#......",
         ".#.H.................#...........#......",
         ".#...................#...........#......",
         ".#.........#####+#########.....H.#......",
         ".###########.............#.......#......",
         ".#.........#.............#.......#......",
-        ".#.........#..$..........#...K...#......",
+        ".#.........#..$..........#...T...#......",
         ".#.....H...#.....k.......#.......#......",
-        ".#...K.....+.............#.......#......",
+        ".#...T.....+.............#.......#......",
         ".#.........#....../.I....+....G..#......",
         ".#.........#.............#.......#......",
         ".#....R....#..R..........#.......#......",
-        ".#.........#.............#.......#......",
+        ".#..P......#.............#.......#......",
         ".#.........#.............#..$....#......",
         ".###########.............#.......#......",
         "..........########################......",
@@ -82,7 +82,7 @@ static const char * const rooms[ROOM_COUNT][ROOM_H] = {
 /* Translate one template character to a floor tile glyph and optionally
  * describe a game object that sits on that floor. When *is_game_object is
  * set, *object_g is the entity/pickup glyph and *type_idx is only meaningful
- * for G_ENEMY (index into ENEMY_TYPES). Caller (map_load) copies coords into
+ * for foe glyphs (index into ENEMY_TYPES). Caller (map_load) copies coords into
  * map_game_objects[] except for G_PLAYER, which only updates map_player_*. */
 
 static glyph_t ascii_to_glyph(char c, uint8_t *is_game_object, glyph_t *object_g,
@@ -96,8 +96,9 @@ static glyph_t ascii_to_glyph(char c, uint8_t *is_game_object, glyph_t *object_g
         case '.': return G_FLOOR;
         case ' ': return G_SPACE;
         case '@': *is_game_object = 1; *object_g = G_PLAYER; return G_FLOOR;
-        case 'K': case 'G': case 'R':
-                  *is_game_object = 1; *object_g = G_ENEMY;
+        case 'G': case 'R': case 'T':
+                  *is_game_object = 1;
+                  *object_g = enemy_foe_glyph_for_marker(c);
                   *type_idx = enemy_type_from_marker(c);
                   return G_FLOOR;
         case 'H': *is_game_object = 1; *object_g = G_HEALTH; return G_FLOOR;

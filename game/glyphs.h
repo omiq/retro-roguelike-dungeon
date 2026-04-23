@@ -21,7 +21,7 @@ typedef uint8_t glyph_t;
 #define G_WALL      1   /* '#' solid */
 #define G_DOOR      2   /* '+' closed door */
 #define G_PLAYER    3   /* '@' reserved for draw; not a map tile id */
-#define G_ENEMY     4   /* 'E' generic enemy glyph on screen */
+#define G_ENEMY     4   /* 'E' legacy generic; map foes use G_FOE_* below */
 #define G_GOLD      5   /* '$' */
 #define G_POTION    6   /* '!' on screen; map marker 'P' (small HP restore in main) */
 #define G_WEAPON    7   /* '/' */
@@ -35,6 +35,12 @@ typedef uint8_t glyph_t;
 #define G_BOLT     15   /* '*' fireball in flight */
 #define G_KEY      16   /* 'k' */
 #define G_DOOR_AJAR 17  /* '-' ajar / forced door */
-#define G_COUNT    18
+/* Foes: one logical id per species so plat_putc shows G/R/T (not one 'E').
+ * Add new types here + ENEMY_TYPES + glyph_native[] on every adapter.
+ * Use enemy_glyph_is_foe() / enemy_type_from_marker() — do not compare g==G_ENEMY. */
+#define G_FOE_GOBLIN 18   /* 'G' */
+#define G_FOE_RAT    19   /* 'R' */
+#define G_FOE_THUG   20   /* 'T' was kobold slot; "K" reserved for keys in docs */
+#define G_COUNT      21
 
 #endif

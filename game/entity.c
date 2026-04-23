@@ -13,7 +13,7 @@
  * Data model
  * ----------
  * Every occupant of a map cell that is not the lone @ player is represented
- * as entity_t: position, glyph (G_ENEMY, G_GOLD, …), alive flag, hp/dmg.
+ * as entity_t: position, glyph (G_FOE_* / G_GOLD / …), alive flag, hp/dmg.
  * Pickups use hp=0, dmg=0; enemies get stats from ENEMY_TYPES[type_idx].
  * entity_kill() syncs the map tile to G_CORPSE for dead enemies so the
  * floor glyph under the body stays consistent for redraw_cell().
@@ -53,13 +53,13 @@ uint8_t      player_keys;
 move_event_t move_events[MOVE_EVENTS_MAX];
 uint8_t      move_event_count;
 
-/* Static species table: marker must match map template letters (G/R/K). */
+/* Static species table: marker must match map.c template letters (G/R/T). */
 
 const enemy_type_t ENEMY_TYPES[ENEMY_TYPE_COUNT] = {
-    /* marker, hp, dmg(str), spd, arm, colour,       name */
-    {  'G',    30,   5,        1,  10, COL_GREEN,    "goblin" },
-    {  'R',    15,   5,        2,   0, COL_CYAN,     "rat"    },
-    {  'K',    20,   4,        1,   5, COL_MAGENTA,  "kobold" },
+    /* marker hp dmg spd arm colour          ai                 floor name */
+    { 'G', 30, 5, 1, 10, COL_GREEN,   ENEMY_AI_GREEDY,   0, "goblin" },
+    { 'R', 15, 5, 2,  0, COL_CYAN,    ENEMY_AI_RANDOM4,  0, "rat"    },
+    { 'T', 20, 4, 1,  5, COL_MAGENTA, ENEMY_AI_GREEDY,   0, "thug"   },
 };
 
 /* Lookup ENEMY_TYPES index from a template character; -1 if not an enemy. */
@@ -69,6 +69,15 @@ int8_t enemy_type_from_marker(char c) {
     for (i = 0; i < ENEMY_TYPE_COUNT; i++)
         if (ENEMY_TYPES[i].marker == c) return (int8_t)i;
     return -1;
+}
+
+glyph_t enemy_foe_glyph_for_marker(char c) {
+    switch (c) {
+        case 'G': return G_FOE_GOBLIN;
+        case 'R': return G_FOE_RAT;
+        case 'T': return G_FOE_THUG;
+        default:  return G_FLOOR;
+    }
 }
 
 /* Rebuild entities[] from map_game_objects[] after each map_load.
@@ -86,7 +95,7 @@ void entity_init_from_map_game_objects(void) {
         entities[entity_count].g        = map_game_objects[i].g;
         entities[entity_count].alive    = 1;
         entities[entity_count].type_idx = map_game_objects[i].type_idx;
-        if (map_game_objects[i].g == G_ENEMY) {
+        if (enemy_glyph_is_foe(map_game_objects[i].g)) {
             t = map_game_objects[i].type_idx;
             if (t >= 0 && t < ENEMY_TYPE_COUNT) {
                 entities[entity_count].hp  = (int8_t)ENEMY_TYPES[t].hp;
@@ -153,7 +162,7 @@ uint8_t entity_player_attack(uint8_t px, uint8_t py, uint8_t ax, uint8_t ay,
     int8_t  t;
     if (ei < 0) return 0;
     e = &entities[ei];
-    if (!e->alive || e->g != G_ENEMY) return 0;
+    if (!e->alive || !enemy_glyph_is_foe(e->g)) return 0;
 
     rnum = d20();
     t = e->type_idx;
@@ -243,17 +252,19 @@ static uint8_t within_wake_range(uint8_t px, uint8_t py,
 
 void entity_ai_turn(uint8_t px, uint8_t py) {
     uint8_t i;
-    int8_t  dx, dy;
+    int8_t  dx, dy, t;
     uint8_t rnd, w;
 
     move_event_count = 0;
     for (i = 0; i < entity_count; i++) {
-        if (!entities[i].alive || entities[i].g != G_ENEMY) continue;
+        if (!entities[i].alive || !enemy_glyph_is_foe(entities[i].g)) continue;
         /* Sleep if player far away. Rats stay put too — simpler + matches
          * raylib version, where only woken enemies move. */
         if (!within_wake_range(px, py, entities[i].x, entities[i].y)) continue;
 
-        if (entities[i].type_idx == ENEMY_TYPE_RAT) {
+        t = entities[i].type_idx;
+        if (t < 0 || t >= ENEMY_TYPE_COUNT) t = 0;
+        if (ENEMY_TYPES[t].ai == ENEMY_AI_RANDOM4) {
             /* Random: rand()%4+1 (1..4) -> 1=up 2=right 3=down 4=left. */
             rnd = (uint8_t)((plat_rand() % 4) + 1);
             dx = 0; dy = 0;
@@ -262,7 +273,7 @@ void entity_ai_turn(uint8_t px, uint8_t py) {
             else if (rnd == 3) dy =  1;
             else if (rnd == 4) dx = -1;
         } else {
-            /* Goblin + kobold: both axes toward player each turn. */
+            /* ENEMY_AI_GREEDY: both axes toward player each turn. */
             dx = (px > entities[i].x) ?  1 : (px < entities[i].x) ? -1 : 0;
             dy = (py > entities[i].y) ?  1 : (py < entities[i].y) ? -1 : 0;
         }

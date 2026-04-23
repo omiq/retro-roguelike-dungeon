@@ -47,6 +47,9 @@ changes**:
 - New glyph type (e.g. `G_TRAP`, `G_SCROLL`): add to `game/glyphs.h`, update
   `G_COUNT`, add entry in every `plat_*.c`'s `glyph_native[]` table, add
   colour mapping in `game/main.c` `colour_for_glyph()`.
+  Foes use `G_FOE_*` (not `G_ENEMY`): extend `enemy_glyph_is_foe` in
+  `enemy_types.h`, `ENEMY_TYPES[]`, `enemy_foe_glyph_for_marker()`, and
+  `map.c` template letters together.
 - New enemy behaviour: edit `game/entity.c`. `entity_ai_turn()` is the
   single place AI runs.
 - New item pickup: edit `step_onto()` in `game/main.c`.
