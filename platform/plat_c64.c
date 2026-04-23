@@ -21,7 +21,7 @@ static const uint8_t glyph_native[G_COUNT] = {
     /* G_SPACE  */ ' ',
     /* G_BORDER */ '*',
     /* G_HEALTH */ 'h',
-    /* G_MAGIC  */ 'm',
+    /* G_MAGIC  */ '*',
     /* G_IDOL   */ '&',
     /* G_BOLT   */ '*',
     /* G_KEY       */ 'k',

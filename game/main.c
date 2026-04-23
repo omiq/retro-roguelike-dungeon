@@ -1,12 +1,28 @@
 /*
- * main.c — Phase 3.1 game loop, incremental redraw.
- * Full map drawn once at init. Each turn only redraws:
- *   - player old/new cell
- *   - killed enemy -> corpse
- *   - pickup -> floor restore
- *   - each enemy that moved -> old cell (restore underlying map tile) + new cell
- *   - status bar (only when stats changed)
- * Everything else left alone, so flicker vanishes on slow machines.
+ * main.c — top-level game: states, input, rendering, and rules glue.
+ *
+ * Design goals
+ * ------------
+ * 1) Phase-3.1 incremental redraw: full map once at run start, then each
+ *    turn only touches cells that changed (player old/new, corpses, pickups,
+ *    enemy move_events, status row). That keeps CBM-class hardware usable.
+ * 2) Explicit finite-state machine for program flow (attract, play, game
+ *    over, win, quit) instead of nested blocking loops — easier to extend
+ *    (e.g. map transitions) without duplicating init/shutdown paths.
+ * 3) All I/O through platform.h so this file stays portable.
+ *
+ * Layering (who owns what)
+ * -------------------------
+ * - map.*     geometry + map_game_objects from templates.
+ * - entity.*  entities[], combat, AI, move_events[], player stats globals.
+ * - main.c    px/py player cell, spell direction, UI buffers, state enum,
+ *             colour_for_glyph / redraw_cell / step_onto / run_playing_turn.
+ *
+ * Input note
+ * ------------
+ * plat_key_wait() returns logical K_* codes; most printable keys collapse
+ * to K_OTHER. Menus therefore use K_FIRE and K_QUIT only (see run_attract,
+ * game-over, win states).
  */
 #include <stdint.h>
 #include "../platform/platform.h"
@@ -14,11 +30,14 @@
 #include "entity.h"
 #include "enemy_types.h"
 
-/* Player position */
+/* --- Player position (map coordinates; not stored in entities[]) --- */
+
 static uint8_t px, py;
 
 /* HP lost per door bump without a key (matches archive dungeon_multi). */
 #define DOOR_BUMP_HP_COST 10
+
+/* --- Logical glyph → status-line / map colour (adapter maps COL_* later) --- */
 
 static uint8_t colour_for_glyph(glyph_t g) {
     switch (g) {
@@ -47,6 +66,8 @@ static uint8_t colour_for_glyph(glyph_t g) {
  * Matches original dungeon_multi.c (direction_x, direction_y). */
 static int8_t direction_x = 1;
 static int8_t direction_y = 0;
+
+/* --- Fireball spell (side-effect heavy: animates then may kill one enemy) --- */
 
 /* Cast fireball: costs 5 magic to start, travels along (direction_x,
  * direction_y) animating G_BOLT through floor cells, consuming 1 magic
@@ -88,9 +109,12 @@ static void cast_fireball(uint8_t px, uint8_t py) {
     }
 }
 
-/* Status bar drawn on the row immediately below the map. */
+/* --- Status bar (one row at y == map_h): fixed 40-char layout, diffed draw --- */
+
 static char status_buf[41];
 static uint8_t prev_hp, prev_gold, prev_dmg, prev_magic, prev_idols, prev_keys;
+
+/* Tiny unsigned decimal formatter — no snprintf on minimal libc targets. */
 
 static void u8_to_str(uint8_t v, char *out) {
     uint8_t h = v / 100, t = (v / 10) % 10, o = v % 10, p = 0;
@@ -100,6 +124,8 @@ static void u8_to_str(uint8_t v, char *out) {
     out[p] = '\0';
 }
 
+/* Copy "HP:" style prefix then value digits into status_buf at fixed columns. */
+
 static void write_field(const char *label, uint8_t value, uint8_t col) {
     uint8_t i;
     char tmp[4];
@@ -108,6 +134,9 @@ static void write_field(const char *label, uint8_t value, uint8_t col) {
     for (i = 0; tmp[i]; i++) status_buf[col + 3 + i] = tmp[i];
 }
 
+/* Assemble the full 40-character status line; see write_field call sites for
+ * column plan (HP/MP/gold/keys/idols fraction). */
+
 static void build_status(void) {
     uint8_t i;
     char tmp[4];
@@ -115,7 +144,7 @@ static void build_status(void) {
     status_buf[40] = '\0';
     /* Layout: "HP:nn MP:nn $:nn K:n I:n/nn" in 40 cols. */
     write_field("HP:", player_hp,    0);
-    write_field("MP:", player_magic, 7);
+    write_field("*:", player_magic,  6);
     status_buf[14] = '$'; status_buf[15] = ':';
     u8_to_str(player_gold, tmp);
     for (i = 0; tmp[i]; i++) status_buf[16 + i] = tmp[i];
@@ -133,6 +162,8 @@ static void build_status(void) {
         for (j = 0; tmp2[j]; j++) status_buf[30 + i + j] = tmp2[j];
     }
 }
+
+/* Cheap UI path: skip plat_puts if nothing on the status row changed. */
 
 static void redraw_status_if_changed(void) {
     if (player_hp    == prev_hp    &&
@@ -152,7 +183,10 @@ static void redraw_status_if_changed(void) {
     prev_keys  = player_keys;
 }
 
-/* Returns the colour to draw entity ei in (type colour for enemies, else default). */
+/* --- Cell rendering: map tile vs live entity overlay --- */
+
+/* Enemies use ENEMY_TYPES[].colour; other entities use colour_for_glyph. */
+
 static uint8_t colour_for_entity(int8_t ei) {
     int8_t t;
     if (ei < 0) return COL_WHITE;
@@ -163,7 +197,8 @@ static uint8_t colour_for_entity(int8_t ei) {
     return colour_for_glyph(entities[ei].g);
 }
 
-/* Redraw one cell from map + any live entity sitting on it. */
+/* Single-cell repaint: prefer a live entity sprite, else the map tile. */
+
 static void redraw_cell(uint8_t x, uint8_t y) {
     int8_t ei = entity_at(x, y);
     if (ei >= 0 && entities[ei].alive) {
@@ -173,6 +208,9 @@ static void redraw_cell(uint8_t x, uint8_t y) {
         plat_putc(x, y, g, colour_for_glyph(g));
     }
 }
+
+/* Full-screen first draw after map load: terrain pass, then entities, then
+ * player @ on top. Bumps prev_hp so the status row always prints once. */
 
 static void initial_render(uint8_t px, uint8_t py) {
     uint8_t x, y, i;
@@ -194,6 +232,8 @@ static void initial_render(uint8_t px, uint8_t py) {
     prev_hp = player_hp + 1;
     redraw_status_if_changed();
 }
+
+/* --- Player movement resolution (doors, solids, bump combat, pickups) --- */
 
 /* Resolve the player's attempt to enter (nx,ny). Returns 1 if player moved.
  * Patches affected cells (target if enemy killed or item picked up). */
@@ -242,13 +282,13 @@ static uint8_t step_onto(uint8_t *px, uint8_t *py, uint8_t nx, uint8_t ny) {
         }
         /* Pickup. */
         switch (e->g) {
-            case G_GOLD:   player_gold += 5;                     break;
-            case G_HEALTH: if (player_hp < 245) player_hp += 10; break;
-            case G_MAGIC:  if (player_magic < 250) player_magic++; break;
-            case G_IDOL:   player_idols++;                       break;
-            case G_WEAPON: player_dmg += 2;                      break;
-            case G_POTION: if (player_hp < 250) player_hp += 5;  break;
-            case G_KEY:    player_keys++;                        break;
+            case G_GOLD:   player_gold += 25;                     break; /* 25 gold per pickup */
+            case G_HEALTH: if (player_hp < 100) player_hp += 50;  break;
+            case G_MAGIC:  if (player_magic < 100) player_magic += 50; break;
+            case G_IDOL:   player_idols++;                        break;
+            case G_WEAPON: player_dmg += 10;                      break;
+            case G_POTION: if (player_hp < 250) player_hp += 5;  break; /* map 'P' */
+            case G_KEY:    player_keys++;                         break;
             default: break;
         }
         e->alive = 0;
@@ -260,16 +300,21 @@ static uint8_t step_onto(uint8_t *px, uint8_t *py, uint8_t nx, uint8_t ny) {
     return 1;
 }
 
-/* Load one map and rebuild state derived from that map:
- * map tiles, spawned entities, and player spawn position. */
+/* Reload geometry + entities + player start from map_id (single entry point
+ * so future “next floor” code does not duplicate map_load + entity init). */
+
 static void load_map_state(uint8_t map_id) {
     map_load(map_id);
-    entity_init_from_map_spawns();
+    entity_init_from_map_game_objects();
     px = map_player_x;
     py = map_player_y;
 }
 
-/* Program structure (high level):
+/* =============================================================================
+ * Application states and main driver
+ * =============================================================================
+ *
+ * Program structure (high level):
  * 1. Boot platform + attract sequence (title/demo; richer on capable platforms)
  * 2. Playing: input → update → render; load next map when wired
  * 3. Game over / win overlays: wait for logical keys, then replay or quit
@@ -279,12 +324,14 @@ static void load_map_state(uint8_t map_id) {
  * menus use K_FIRE (space/return/z) and K_QUIT only. */
 
 typedef enum {
-    STATE_ATTRACT = 0, /* attract mode before first play / replay / win */
+    STATE_ATTRACT = 0, /* title/demo until player starts (FIRE) */
     STATE_PLAYING,     /* one turn at a time */
     STATE_GAME_OVER,   /* wait: replay or quit */
     STATE_WIN,         /* floor cleared; wait Q */
     STATE_QUIT
 } game_state_t;
+
+/* One-time OS/terminal setup + RNG seed. Not repeated on “play again”. */
 
 static void platform_boot(void) {
     plat_init();
@@ -292,11 +339,11 @@ static void platform_boot(void) {
 }
 
 /* New run: reset player stats, load map 0, full redraw. Does not re-init
- * the platform (safe for “play again”). */
+ * the platform (safe for “play again”). Spell aim resets to east. */
 static void start_new_run(void) {
     direction_x = 1;
     direction_y = 0;
-    player_hp    = 30;
+    player_hp    = 100;
     player_dmg   = 10;
     player_gold  = 0;
     player_magic = 0;
@@ -310,8 +357,10 @@ static void start_new_run(void) {
  * grow into a timed demo / scrolling banner without changing the state name. */
 static void run_attract(void) {
     plat_cls();
-    plat_puts(0, 0, "Dungeon  arrows/WASD  fire=Z/spc  Q=quit", COL_CYAN);
-    plat_puts(0, 1, "Press FIRE (space/return/Z) to start", COL_WHITE);
+    plat_puts(0, 0, "Retro Roguelike Dungeon", COL_CYAN);
+    plat_puts(0, 1, "Arrows/WASD to move", COL_WHITE);
+    plat_puts(0, 2, "FIRE (space/return/Z) to start", COL_WHITE);
+    plat_puts(0, 3, "Q to quit", COL_WHITE);
 }
 
 /* One playing turn: block for input, move/attack, enemy phase, patch draw.
@@ -370,6 +419,9 @@ static game_state_t run_playing_turn(void) {
 
     return STATE_PLAYING;
 }
+
+/* Blocking state dispatcher: each state handles its own input model; only
+ * STATE_QUIT tears down the platform. */
 
 int main(void) {
     game_state_t state = STATE_ATTRACT;

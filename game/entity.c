@@ -1,22 +1,45 @@
 /*
- * entity.c — combat + movement ported from
- * ARCHIVE_pre_refactor/dungeon_multi.c (attack, enemy_attack, move_enemies).
+ * entity.c — combat, pickups-as-entities, and enemy AI.
  *
- * Original mechanics preserved:
- *   - player bump-attack rolls d20, hits when rnum > armour+speed
- *   - on miss, if player adjacent to enemy, enemy lands free strength hit
- *   - enemy_attack rolls d20, >10 → enemy damages player by strength,
- *     else player counter-attacks for 5
- *   - rat moves random (1..4 → NSEW)
- *   - goblin + kobold chase player both axes at once (diagonal-capable)
+ * Relationship to other game modules
+ * -------------------------------------
+ * - map.c     owns static geometry (walls, doors, floor). Living things and
+ *             loose items live in entities[] after map_load + init here.
+ * - main.c    owns the player cell (px, py), turn order, and all drawing.
+ *             It calls entity_player_attack / entity_ai_turn each turn and
+ *             consumes move_events[] to patch only changed screen cells.
+ * - platform  supplies plat_rand and timing; this file never touches hardware.
  *
- * One honest simplification: original measured player-adjacent via
- *   (x == ax && y == ay) || ... 4-dir checks. Ported verbatim.
+ * Data model
+ * ----------
+ * Every occupant of a map cell that is not the lone @ player is represented
+ * as entity_t: position, glyph (G_ENEMY, G_GOLD, …), alive flag, hp/dmg.
+ * Pickups use hp=0, dmg=0; enemies get stats from ENEMY_TYPES[type_idx].
+ * entity_kill() syncs the map tile to G_CORPSE for dead enemies so the
+ * floor glyph under the body stays consistent for redraw_cell().
+ *
+ * Original mechanics preserved (dungeon_multi.c port)
+ * -----------------------------------------------------
+ *   - Player bump-attack: d20 hit if rnum > armour+speed; on miss, if the
+ *     player is orthogonally adjacent to the target, the enemy deals a free
+ *     strength hit (same 4-dir + same-cell test as the original).
+ *   - Enemy stepping onto the player: d20; >10 enemy hits by strength, else
+ *     player counter-attacks for 5 fixed damage.
+ *   - Rat: random NSEW each turn when awake. Goblin + kobold: greedy step
+ *     toward player on both axes (can appear to cut corners).
+ *
+ * move_events[] protocol
+ * -----------------------
+ * entity_ai_turn clears move_event_count, then record_move() appends one
+ * entry per successful enemy step (old cell, new cell, glyph for draw).
+ * main.c redraws old from map+entities, then draws the enemy glyph on new.
  */
 #include "entity.h"
 #include "enemy_types.h"
 #include "map.h"
 #include "../platform/platform.h"
+
+/* --- Global entity state and player inventory (see entity.h) --- */
 
 entity_t     entities[ENTITY_MAX];
 uint8_t      entity_count;
@@ -30,12 +53,16 @@ uint8_t      player_keys;
 move_event_t move_events[MOVE_EVENTS_MAX];
 uint8_t      move_event_count;
 
+/* Static species table: marker must match map template letters (G/R/K). */
+
 const enemy_type_t ENEMY_TYPES[ENEMY_TYPE_COUNT] = {
     /* marker, hp, dmg(str), spd, arm, colour,       name */
     {  'G',    30,   5,        1,  10, COL_GREEN,    "goblin" },
     {  'R',    15,   5,        2,   0, COL_CYAN,     "rat"    },
     {  'K',    20,   4,        1,   5, COL_MAGENTA,  "kobold" },
 };
+
+/* Lookup ENEMY_TYPES index from a template character; -1 if not an enemy. */
 
 int8_t enemy_type_from_marker(char c) {
     uint8_t i;
@@ -44,18 +71,23 @@ int8_t enemy_type_from_marker(char c) {
     return -1;
 }
 
-void entity_init_from_map_spawns(void) {
+/* Rebuild entities[] from map_game_objects[] after each map_load.
+ * Player stats are not reset here — main.c start_new_run() owns run-wide
+ * HP/gold/etc. This only rebuilds who sits on the map and counts idols for
+ * the win condition (idols_total). */
+
+void entity_init_from_map_game_objects(void) {
     uint8_t i;
     int8_t  t;
     entity_count = 0;
-    for (i = 0; i < map_spawn_count && entity_count < ENTITY_MAX; i++) {
-        entities[entity_count].x        = map_spawns[i].x;
-        entities[entity_count].y        = map_spawns[i].y;
-        entities[entity_count].g        = map_spawns[i].g;
+    for (i = 0; i < map_game_object_count && entity_count < ENTITY_MAX; i++) {
+        entities[entity_count].x        = map_game_objects[i].x;
+        entities[entity_count].y        = map_game_objects[i].y;
+        entities[entity_count].g        = map_game_objects[i].g;
         entities[entity_count].alive    = 1;
-        entities[entity_count].type_idx = map_spawns[i].type_idx;
-        if (map_spawns[i].g == G_ENEMY) {
-            t = map_spawns[i].type_idx;
+        entities[entity_count].type_idx = map_game_objects[i].type_idx;
+        if (map_game_objects[i].g == G_ENEMY) {
+            t = map_game_objects[i].type_idx;
             if (t >= 0 && t < ENEMY_TYPE_COUNT) {
                 entities[entity_count].hp  = (int8_t)ENEMY_TYPES[t].hp;
                 entities[entity_count].dmg = ENEMY_TYPES[t].dmg;
@@ -75,6 +107,8 @@ void entity_init_from_map_spawns(void) {
         if (entities[i].g == G_IDOL) idols_total++;
 }
 
+/* First live entity at (x,y), or -1. Used for combat, pickups, and drawing. */
+
 int8_t entity_at(uint8_t x, uint8_t y) {
     uint8_t i;
     for (i = 0; i < entity_count; i++)
@@ -83,13 +117,19 @@ int8_t entity_at(uint8_t x, uint8_t y) {
     return -1;
 }
 
+/* Mark dead and write G_CORPSE into map_tiles so redraw_cell shows the body
+ * once the entity is no longer drawn as alive. */
+
 void entity_kill(uint8_t idx) {
     if (idx >= entity_count) return;
     entities[idx].alive = 0;
     map_set(entities[idx].x, entities[idx].y, G_CORPSE);
 }
 
-/* d20 roll: 1..20. Ported from dungeon_multi.c (rand % 20 + 1). */
+/* --- Combat helpers (player bump + enemy bump into player) --- */
+
+/* Uniform 1..20 inclusive, via plat_rand (platform-seeded PRNG). */
+
 static uint8_t d20(void) {
     return (uint8_t)((plat_rand() % 20) + 1);
 }
@@ -197,6 +237,10 @@ static uint8_t within_wake_range(uint8_t px, uint8_t py,
     return d2 <= (AI_WAKE_RANGE * AI_WAKE_RANGE) ? 1 : 0;
 }
 
+/* One pass over all enemies: far-away enemies skip; others try one step.
+ * Colliding with the player resolves to enemy_attack_player; free cells
+ * enqueue move_events for the host to redraw without a full screen refresh. */
+
 void entity_ai_turn(uint8_t px, uint8_t py) {
     uint8_t i;
     int8_t  dx, dy;
@@ -233,8 +277,9 @@ void entity_ai_turn(uint8_t px, uint8_t py) {
     }
 }
 
-/* Kept for API compatibility but no longer called: original mechanics
- * handle damage via enemy_attack_player when enemies step into player. */
+/* Legacy hook from an earlier port phase: damage is applied when an enemy
+ * tries to enter the player tile (enemy_attack_player). Kept so callers or
+ * headers that still declare it do not need a second ABI churn. */
 uint8_t entity_adjacent_damage(uint8_t px, uint8_t py) {
     (void)px; (void)py;
     return 0;

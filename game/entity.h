@@ -1,6 +1,6 @@
 /*
  * entity.h — live entities (enemies, items on floor).
- * Map spawns get converted into entity_t records on init so each can
+ * Map game objects get converted into entity_t records on init so each can
  * move (enemies) and be removed (pickups, kills).
  */
 #ifndef GAME_ENTITY_H
@@ -29,7 +29,7 @@ extern uint8_t player_dmg;
 extern uint8_t player_gold;
 extern uint8_t player_magic;
 extern uint8_t player_idols;
-extern uint8_t idols_total;    /* set at map_load from spawn count */
+extern uint8_t idols_total;    /* set at map_load from idol object count */
 extern uint8_t player_keys;    /* unlock doors */
 
 /* Wake range for AI — enemies within this tile radius chase player.
@@ -48,7 +48,7 @@ typedef struct {
 extern move_event_t move_events[MOVE_EVENTS_MAX];
 extern uint8_t      move_event_count;
 
-void     entity_init_from_map_spawns(void);
+void     entity_init_from_map_game_objects(void);
 int8_t   entity_at(uint8_t x, uint8_t y);   /* returns index or -1 */
 void     entity_kill(uint8_t idx);           /* corpse on map, entity gone */
 void     entity_ai_turn(uint8_t px, uint8_t py);

@@ -266,17 +266,17 @@ Scaffolding landed.
 
 Map module migrated.
 
-- `game/map.h` — MAP_MAX_W/H constants, map_spawn_t, extern tile grid,
+- `game/map.h` — MAP_MAX_W/H constants, game_object_t, extern tile grid,
   `map_load/get/is_solid`. Why: `MAP_MAX_*` not `40/25`; sizing decided
   at init from `plat_screen_w/h`.
 - `game/map.c` — room 0 ported from `ARCHIVE_pre_refactor/map.h` (24 rows
   × 40 cols, hand-drawn). `ascii_to_glyph()` converts `#.+@KGRH$/%I P>`
   raw chars into G_* at load time — game never sees ASCII after this.
-  Spawn markers (`@`, enemies, items) collected into `map_spawns[]`
+  Template markers (`@`, enemies, items) collected into `map_game_objects[]`
   array with glyph id. Why: player start + entity positions encoded in
   the template; parsing once at load simplifies downstream code.
 - `game/main.c` — draws map via `plat_putc` with per-glyph colour, then
-  draws spawns on top, then player. Movement checks `map_is_solid()`.
+  draws game objects on top, then player. Movement checks `map_is_solid()`.
 - `build/common.mk` — added `game/map.c`.
 - `platform/platform.h` — fixed nested `/*` in header comment.
 - C64 PRG: 3467 bytes.
@@ -285,8 +285,8 @@ Map module migrated.
 
 Entities, combat, pickups, status bar.
 
-- `game/entity.h/c` — `entity_t` (x, y, glyph, alive, hp, dmg). Spawned
-  from `map_spawns[]` at init: enemies hp=3/dmg=1, items hp/dmg=0.
+- `game/entity.h/c` — `entity_t` (x, y, glyph, alive, hp, dmg). Built
+  from `map_game_objects[]` at init: enemies hp=3/dmg=1, items hp/dmg=0.
   - `entity_at(x, y)` → index or -1
   - `entity_kill(idx)` marks dead + writes G_CORPSE to map
   - `entity_ai_turn(px, py)` — greedy axis-first step, fallback secondary
@@ -310,7 +310,7 @@ Incremental redraw. Stops full-screen repaint each turn.
 - `game/entity.c` — `record_move()` fills buffer before mutating
   `entities[i].x/y`. Buffer cleared at start of `entity_ai_turn`.
 - `game/main.c`:
-  - `initial_render()` draws map + spawns + player once. Never again.
+  - `initial_render()` draws map + game objects + player once. Never again.
   - `redraw_cell(x, y)` generic: show live entity if present, else map.
   - Per turn: player old + new cell, killed enemy → G_CORPSE,
     each `move_events[i]`: old + new cell.
@@ -377,10 +377,10 @@ Enemy type table + HP/magic/idol pickup semantics corrected per author.
   magenta). Horror dropped — H marker repurposed.
 - `game/glyphs.h`: +G_HEALTH (12), +G_MAGIC (13), +G_IDOL (14).
   G_COUNT bumped 12 → 15. All 7 adapters' `glyph_native[]` extended
-  with `'h','m','&'`.
+  with `'h','*','&'` (magic pickup `*`; same char reused for G_BOLT/G_BORDER on some targets).
 - `game/map.c`: `ascii_to_glyph` revised per author's intent —
-  H = health pickup (was enemy), P = magic/power pickup,
-  I = idol (collect-all mcguffin). map_spawn_t carries type_idx.
+  H = health pickup (was enemy); templates later settled on `*` = magic
+  (G_MAGIC), `P` = potion (G_POTION). I = idol. game_object_t carries type_idx.
 - `game/entity.h/c`: +player_magic, +player_idols, +idols_total.
   Entity init reads stats from ENEMY_TYPES[type_idx]. Player stats
   scaled to match: hp 30, dmg 10.

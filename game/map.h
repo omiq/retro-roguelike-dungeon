@@ -17,15 +17,16 @@ extern uint8_t map_w;
 extern uint8_t map_h;
 extern glyph_t map_tiles[MAP_MAX_H][MAP_MAX_W];
 
-/* Entity spawns parsed out of the template (player start, enemies, gold...). */
-#define MAP_MAX_SPAWNS 32
+/* Game objects parsed from the template (enemies, pickups, …). Player '@'
+ * is handled separately via map_player_x/y. */
+#define MAP_MAX_GAME_OBJECTS 32
 typedef struct {
     uint8_t x, y;
     glyph_t g;
     int8_t  type_idx;   /* ENEMY_TYPE_* when g == G_ENEMY, else -1 */
-} map_spawn_t;
-extern map_spawn_t map_spawns[MAP_MAX_SPAWNS];
-extern uint8_t     map_spawn_count;
+} game_object_t;
+extern game_object_t map_game_objects[MAP_MAX_GAME_OBJECTS];
+extern uint8_t       map_game_object_count;
 extern uint8_t     map_player_x, map_player_y;   /* from '@' marker */
 
 void    map_load(uint8_t room_index);
