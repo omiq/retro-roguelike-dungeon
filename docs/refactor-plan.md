@@ -446,6 +446,32 @@ Fireball spell ported from original (case 'f' in dungeon_multi.c).
 - `colour_for_glyph`: G_BOLT = COL_YELLOW.
 - C64 PRG: 8917 bytes.
 
+### 2026-04-23 — Phase 4.5 (commit `97b1545`)
+
+AI wake range + keys/doors + BBC scroll fix. Ported from raylib version.
+
+- `game/entity.c`: `within_wake_range()` — squared-distance check vs
+  `AI_WAKE_RANGE` (6 tiles). Enemies outside range skip their AI turn.
+  Mirrors raylib's `is_within_range(player, enemy, 6)`. Big gameplay
+  improvement: distant enemies stay asleep, approach triggers combat.
+- `game/glyphs.h`: +G_KEY (16). G_COUNT 16 → 17. All 8 adapters'
+  `glyph_native[]` extended with `'k'`.
+- `game/map.c`: `ascii_to_glyph` maps `k` → G_KEY pickup. Added one
+  `k` to room 0 so the 4 existing doors become reachable.
+- `game/entity.h/c`: +`player_keys` counter, reset to 0 on map load.
+- `game/main.c`: `step_onto` door branch — target G_DOOR consumes one
+  key and converts map cell to G_FLOOR in-place (`map_set` +
+  `plat_putc`). No key = block as before. Corresponds to raylib
+  `'+'` → `'-'` (partially open, passable) state.
+- `game/main.c`: pickup switch handles G_KEY.
+- Status bar rewritten: `HP:n MP:n $:n K:n I:n/N`. DMG field dropped
+  (static once weapons collected; keys more actionable info).
+- **BBC scroll bug fix**: `map_load` now reserves 2 bottom rows (was 1).
+  Status draws at row `map_h`; row `map_h+1` stays empty so BBC cc65
+  conio does not scroll when chars land on the final row.
+- C64 PRG: 9379 bytes (was 8917, +462 for wake range math + keys
+  logic + status field).
+
 ### To-do (next passes)
 
 #### Game features from raylib version (omiq/Raylib-Dungeon)
