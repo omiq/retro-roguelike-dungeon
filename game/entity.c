@@ -57,9 +57,10 @@ uint8_t      move_event_count;
 
 const enemy_type_t ENEMY_TYPES[ENEMY_TYPE_COUNT] = {
     /* marker hp dmg spd arm colour          ai                 floor name */
-    { 'G', 30, 5, 1, 10, COL_GREEN,   ENEMY_AI_GREEDY,   0, "goblin" },
-    { 'R', 15, 5, 2,  0, COL_CYAN,    ENEMY_AI_RANDOM4,  0, "rat"    },
-    { 'T', 20, 4, 1,  5, COL_MAGENTA, ENEMY_AI_GREEDY,   0, "thug"   },
+    { 'G', 30, 5, 1, 10, COL_GREEN,   ENEMY_AI_GREEDY,   0, "goblin"   },
+    { 'R', 15, 5, 2,  0, COL_CYAN,    ENEMY_AI_RANDOM4,  0, "rat"      },
+    { 'T', 20, 4, 1,  5, COL_MAGENTA, ENEMY_AI_GREEDY,   0, "thug"     },
+    { '&', 22, 4, 1,  6, COL_WHITE,   ENEMY_AI_GREEDY,   0, "skeleton" },
 };
 
 /* Lookup ENEMY_TYPES index from a template character; -1 if not an enemy. */
@@ -76,6 +77,7 @@ glyph_t enemy_foe_glyph_for_marker(char c) {
         case 'G': return G_FOE_GOBLIN;
         case 'R': return G_FOE_RAT;
         case 'T': return G_FOE_THUG;
+        case '&': return G_FOE_SKELETON;
         default:  return G_FLOOR;
     }
 }

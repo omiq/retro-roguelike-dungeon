@@ -4,9 +4,11 @@
  *   gcc -DPLAT_HOST=1 -Iplatform -Igame game/main.c game/map.c \
  *       game/entity.c platform/plat_host.c -lncurses -o dungeon-host
  */
+#if defined(__linux__) && !defined(_DEFAULT_SOURCE)
+#define _DEFAULT_SOURCE
+#endif
 #include <ncurses.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
 #include "platform.h"
 
@@ -14,8 +16,8 @@ static uint8_t screen_cols;
 static uint8_t screen_rows;
 
 static const char glyph_native[G_COUNT] = {
-    '.','#','+','@','E','$','!','/','>','%', ' ','*', 'h','*','&', '*', 'k','-',
-    'G','R','T'
+    '.','#','+','@','E','$','!','/','>','%', ' ','*', 'h','*','i', '*', 'k','-',
+    'G','R','T','&'
 };
 
 /* ncurses colour pairs 1..8 map to COL_* */
@@ -94,7 +96,13 @@ uint8_t plat_key_wait(void) {
     }
 }
 
-void plat_delay_ms(uint16_t ms) { usleep((useconds_t)ms * 1000); }
+void plat_delay_ms(uint16_t ms) {
+    struct timespec ts;
+    unsigned n = (unsigned)ms;
+    ts.tv_sec = (time_t)(n / 1000u);
+    ts.tv_nsec = (long)(n % 1000u) * 1000000L;
+    (void)nanosleep(&ts, NULL);
+}
 
 static uint16_t rng_state;
 void plat_seed_rand(uint16_t seed) {

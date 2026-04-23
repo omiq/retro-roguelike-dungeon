@@ -33,6 +33,7 @@
 /* --- Player position (map coordinates; not stored in entities[]) --- */
 
 static uint8_t px, py;
+static uint8_t cur_map_index;
 
 /* HP lost per door bump without a key (matches archive dungeon_multi). */
 #define DOOR_BUMP_HP_COST 10
@@ -49,7 +50,8 @@ static uint8_t colour_for_glyph(glyph_t g) {
         case G_ENEMY:  return COL_RED;
         case G_FOE_GOBLIN: return COL_GREEN;
         case G_FOE_RAT:    return COL_CYAN;
-        case G_FOE_THUG:   return COL_MAGENTA;
+        case G_FOE_THUG:     return COL_MAGENTA;
+        case G_FOE_SKELETON: return COL_WHITE;
         case G_GOLD:   return COL_YELLOW;
         case G_POTION: return COL_MAGENTA;
         case G_WEAPON: return COL_CYAN;
@@ -308,10 +310,12 @@ static uint8_t step_onto(uint8_t *px, uint8_t *py, uint8_t nx, uint8_t ny) {
  * so future “next floor” code does not duplicate map_load + entity init). */
 
 static void load_map_state(uint8_t map_id) {
+    player_idols = 0; /* per-floor idol pickups; map_idols is quota for this map */
     map_load(map_id);
     entity_init_from_map_game_objects();
     px = map_player_x;
     py = map_player_y;
+    cur_map_index = map_id;
 }
 
 /* =============================================================================
@@ -421,8 +425,13 @@ static game_state_t run_playing_turn(void) {
 
     redraw_status_if_changed();
 
-    if (idols_total > 0 && player_idols >= idols_total) {
-        plat_puts(0, 0, "ALL IDOLS FOUND - press Q", COL_YELLOW);
+    /* All idols on this map collected → next room or run win. */
+    if (map_idols > 0 && player_idols >= map_idols) {
+        if (cur_map_index + 1 < map_nrooms) {
+            load_map_state((uint8_t)(cur_map_index + 1));
+            initial_render(px, py);
+            return STATE_PLAYING;
+        }
         return STATE_WIN;
     }
 

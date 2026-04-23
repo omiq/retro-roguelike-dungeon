@@ -377,7 +377,7 @@ Enemy type table + HP/magic/idol pickup semantics corrected per author.
   magenta). Horror dropped — H marker repurposed.
 - `game/glyphs.h`: +G_HEALTH (12), +G_MAGIC (13), +G_IDOL (14).
   G_COUNT bumped 12 → 15. All 7 adapters' `glyph_native[]` extended
-  with `'h','*','&'` (magic pickup `*`; same char reused for G_BOLT/G_BORDER on some targets).
+  with `'h','*','i'` (magic pickup `*`; same char reused for G_BOLT/G_BORDER on some targets).
 - `game/map.c`: `ascii_to_glyph` revised per author's intent —
   H = health pickup (was enemy); templates later settled on `*` = magic
   (G_MAGIC), `P` = potion (G_POTION). I = idol. game_object_t carries type_idx.

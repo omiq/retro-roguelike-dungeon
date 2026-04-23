@@ -8,8 +8,8 @@
 #include "platform.h"
 
 static const uint8_t glyph_native[G_COUNT] = {
-    '.','#','+','@','E','$','!','/','>','%', ' ','*', 'h','*','&', '*', 'k','-',
-    'G','R','T'
+    '.','#','+','@','E','$','!','/','>','%', ' ','*', 'h','*','i', '*', 'k','-',
+    'G','R','T','&'
 };
 
 void plat_init(void) { clrscr(); }

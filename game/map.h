@@ -28,6 +28,8 @@ typedef struct {
 extern game_object_t map_game_objects[MAP_MAX_GAME_OBJECTS];
 extern uint8_t       map_game_object_count;
 extern uint8_t     map_player_x, map_player_y;   /* from '@' marker */
+extern uint8_t       map_idols;   /* 'I' markers on this map (set in map_load) */
+extern const uint8_t map_nrooms;  /* room template count (ROOM_COUNT in map.c) */
 
 void    map_load(uint8_t room_index);
 glyph_t map_get(uint8_t x, uint8_t y);

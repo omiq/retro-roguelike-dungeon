@@ -22,13 +22,14 @@ static const uint8_t glyph_native[G_COUNT] = {
     /* G_BORDER */ '*',
     /* G_HEALTH */ 'h',
     /* G_MAGIC  */ '*',
-    /* G_IDOL   */ '&',
+    /* G_IDOL   */ 'i',
     /* G_BOLT   */ '*',
     /* G_KEY       */ 'k',
     /* G_DOOR_AJAR */ '-',
     /* G_FOE_GOBLIN */ 'G',
     /* G_FOE_RAT    */ 'R',
     /* G_FOE_THUG   */ 'T',
+    /* G_FOE_SKELETON */ '&',
 };
 
 static const uint8_t colour_native[8] = {

@@ -31,16 +31,17 @@ typedef uint8_t glyph_t;
 #define G_BORDER   11   /* '*' map frame / unused solid accent */
 #define G_HEALTH   12   /* 'h' HP pickup */
 #define G_MAGIC    13   /* '*' MP pickup in room templates (map.c) */
-#define G_IDOL     14   /* '&' collect all to win */
+#define G_IDOL     14   /* 'i' collect all to win */
 #define G_BOLT     15   /* '*' fireball in flight */
 #define G_KEY      16   /* 'k' */
 #define G_DOOR_AJAR 17  /* '-' ajar / forced door */
 /* Foes: one logical id per species so plat_putc shows G/R/T (not one 'E').
  * Add new types here + ENEMY_TYPES + glyph_native[] on every adapter.
  * Use enemy_glyph_is_foe() / enemy_type_from_marker() — do not compare g==G_ENEMY. */
-#define G_FOE_GOBLIN 18   /* 'G' */
-#define G_FOE_RAT    19   /* 'R' */
-#define G_FOE_THUG   20   /* 'T' was kobold slot; "K" reserved for keys in docs */
-#define G_COUNT      21
+#define G_FOE_GOBLIN    18   /* 'G' Goblin */
+#define G_FOE_RAT       19   /* 'R' Rat */
+#define G_FOE_THUG      20   /* 'T' Thug was Kobold */
+#define G_FOE_SKELETON  21   /* '&' Skeleton */
+#define G_COUNT         22
 
 #endif
