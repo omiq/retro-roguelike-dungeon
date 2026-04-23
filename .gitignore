@@ -30,3 +30,16 @@ dungeon.o
 dungeon_multi.o
 charset-c64.o
 charset-c64.o
+
+# Build artifacts
+dungeon-c64.prg
+dungeon-pet.prg
+dungeon-plus4.prg
+dungeon-vic20.prg
+dungeon-apple2
+dungeon-atari.xex
+dungeon-bbc.ssd
+dungeon-host
+*.map
+*.vice
+*.lst
