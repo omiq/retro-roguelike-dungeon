@@ -27,6 +27,18 @@ extern uint8_t player_hp;
 extern uint8_t player_dmg;
 extern uint8_t player_gold;
 
+/* Move event buffer — entity_ai_turn fills this so render can redraw
+ * only the cells that changed instead of the whole screen. */
+#define MOVE_EVENTS_MAX ENTITY_MAX
+typedef struct {
+    uint8_t ox, oy;   /* cell the entity left */
+    uint8_t nx, ny;   /* cell the entity arrived at */
+    glyph_t g;        /* entity glyph (for drawing new cell) */
+} move_event_t;
+
+extern move_event_t move_events[MOVE_EVENTS_MAX];
+extern uint8_t      move_event_count;
+
 void     entity_init_from_map_spawns(void);
 int8_t   entity_at(uint8_t x, uint8_t y);   /* returns index or -1 */
 void     entity_kill(uint8_t idx);           /* corpse on map, entity gone */

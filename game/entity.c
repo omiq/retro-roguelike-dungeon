@@ -5,11 +5,13 @@
 #include "entity.h"
 #include "map.h"
 
-entity_t entities[ENTITY_MAX];
-uint8_t  entity_count;
-uint8_t  player_hp;
-uint8_t  player_dmg;
-uint8_t  player_gold;
+entity_t     entities[ENTITY_MAX];
+uint8_t      entity_count;
+uint8_t      player_hp;
+uint8_t      player_dmg;
+uint8_t      player_gold;
+move_event_t move_events[MOVE_EVENTS_MAX];
+uint8_t      move_event_count;
 
 void entity_init_from_map_spawns(void) {
     uint8_t i;
@@ -67,21 +69,37 @@ static uint8_t can_step(uint8_t from_i, int8_t dx, int8_t dy,
     return 1;
 }
 
+static void record_move(uint8_t i, int8_t dx, int8_t dy) {
+    if (move_event_count < MOVE_EVENTS_MAX) {
+        move_events[move_event_count].ox = entities[i].x;
+        move_events[move_event_count].oy = entities[i].y;
+        move_events[move_event_count].nx = entities[i].x + dx;
+        move_events[move_event_count].ny = entities[i].y + dy;
+        move_events[move_event_count].g  = entities[i].g;
+        move_event_count++;
+    }
+    entities[i].x += dx;
+    entities[i].y += dy;
+}
+
 void entity_ai_turn(uint8_t px, uint8_t py) {
     uint8_t i;
-    int8_t  dx, dy;
+    int8_t  dx, dy, adx, ady;
+    move_event_count = 0;
     for (i = 0; i < entity_count; i++) {
         if (!entities[i].alive) continue;
         if (entities[i].g != G_ENEMY) continue;
         dx = (px > entities[i].x) ? 1 : (px < entities[i].x) ? -1 : 0;
         dy = (py > entities[i].y) ? 1 : (py < entities[i].y) ? -1 : 0;
+        adx = dx < 0 ? -dx : dx;
+        ady = dy < 0 ? -dy : dy;
         /* Prefer larger axis first, fall back to other. */
-        if ((dx != 0 && ((dx < 0 ? -dx : dx) >= (dy < 0 ? -dy : dy)))) {
-            if (can_step(i, dx, 0, px, py)) { entities[i].x += dx; continue; }
-            if (dy != 0 && can_step(i, 0, dy, px, py)) { entities[i].y += dy; continue; }
+        if (dx != 0 && adx >= ady) {
+            if (can_step(i, dx, 0, px, py)) { record_move(i, dx, 0); continue; }
+            if (dy != 0 && can_step(i, 0, dy, px, py)) { record_move(i, 0, dy); continue; }
         } else {
-            if (dy != 0 && can_step(i, 0, dy, px, py)) { entities[i].y += dy; continue; }
-            if (dx != 0 && can_step(i, dx, 0, px, py)) { entities[i].x += dx; continue; }
+            if (dy != 0 && can_step(i, 0, dy, px, py)) { record_move(i, 0, dy); continue; }
+            if (dx != 0 && can_step(i, dx, 0, px, py)) { record_move(i, dx, 0); continue; }
         }
     }
 }
