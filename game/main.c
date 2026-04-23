@@ -237,7 +237,9 @@ int main(void) {
     uint8_t hit, i;
 
     plat_init();
-    plat_seed_rand(0x1234);
+    /* 0 → adapter picks a hardware entropy source (VIC raster, jiffy
+     * clock, etc). Fixed 0x1234 gave identical playthroughs every time. */
+    plat_seed_rand(0);
     map_load(0);
     entity_init_from_map_spawns();
 

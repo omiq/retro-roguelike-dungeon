@@ -23,14 +23,11 @@ uint8_t       map_player_y;
 
 /* Room 0 — 40 wide × 24 tall. Lines shorter than map_w pad with floor. */
 #define ROOM_W 40
-#define ROOM_H 24
+#define ROOM_H 21
 #define ROOM_COUNT 1
 
 static const char * const rooms[ROOM_COUNT][ROOM_H] = {
     {
-        "........................................",
-        "........................................",
-        "........................................",
         ".#################################......",
         ".#...................#...........#......",
         ".#.@.....K...G.......#...R.......#......",

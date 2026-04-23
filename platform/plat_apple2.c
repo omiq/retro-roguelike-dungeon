@@ -62,7 +62,14 @@ void plat_delay_ms(uint16_t ms) {
 }
 
 static uint16_t rng_state;
-void plat_seed_rand(uint16_t seed) { rng_state = seed ? seed : 0xbeef; }
+void plat_seed_rand(uint16_t seed) {
+    if (seed) { rng_state = seed; return; }
+    /* Apple II has no standard timer; use RNDL/RNDH from Applesoft
+     * ($004E/$004F) which cycle continuously while IRQs run. */
+    rng_state = (uint16_t)(*(volatile uint8_t *)0x004E) |
+                ((uint16_t)(*(volatile uint8_t *)0x004F) << 8);
+    if (!rng_state) rng_state = 0xbeef;
+}
 uint16_t plat_rand(void) {
     rng_state ^= rng_state << 7;
     rng_state ^= rng_state >> 9;

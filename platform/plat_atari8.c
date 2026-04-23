@@ -60,7 +60,13 @@ void plat_delay_ms(uint16_t ms) {
 }
 
 static uint16_t rng_state;
-void plat_seed_rand(uint16_t seed) { rng_state = seed ? seed : 0xbeef; }
+void plat_seed_rand(uint16_t seed) {
+    if (seed) { rng_state = seed; return; }
+    /* Atari RTCLOK jiffy $12..$14 + RANDOM $D20A (POKEY). */
+    rng_state = (uint16_t)(*(volatile uint8_t *)0xD20A) |
+                ((uint16_t)(*(volatile uint8_t *)0x0014) << 8);
+    if (!rng_state) rng_state = 0xbeef;
+}
 uint16_t plat_rand(void) {
     rng_state ^= rng_state << 7;
     rng_state ^= rng_state >> 9;

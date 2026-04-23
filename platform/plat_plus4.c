@@ -74,7 +74,13 @@ void plat_delay_ms(uint16_t ms) {
 }
 
 static uint16_t rng_state;
-void plat_seed_rand(uint16_t seed) { rng_state = seed ? seed : 0xbeef; }
+void plat_seed_rand(uint16_t seed) {
+    if (seed) { rng_state = seed; return; }
+    /* TED raster low byte ($FF1D) + timer 1 low ($FF00). */
+    rng_state = (uint16_t)(*(volatile uint8_t *)0xFF1D) |
+                ((uint16_t)(*(volatile uint8_t *)0xFF00) << 8);
+    if (!rng_state) rng_state = 0xbeef;
+}
 uint16_t plat_rand(void) {
     rng_state ^= rng_state << 7;
     rng_state ^= rng_state >> 9;

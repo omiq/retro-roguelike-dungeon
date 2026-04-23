@@ -96,7 +96,14 @@ void plat_delay_ms(uint16_t ms) {
 /* Seed from VIC raster line ($D012) — cheap entropy at boot. */
 static uint16_t rng_state;
 
-void plat_seed_rand(uint16_t seed) { rng_state = seed ? seed : 0xbeef; }
+void plat_seed_rand(uint16_t seed) {
+    if (seed) { rng_state = seed; return; }
+    /* 0 = pull entropy from VIC-II raster ($D012) + TOD tenths ($DC08).
+     * Player's boot time + idle time before first key mix the values. */
+    rng_state = (uint16_t)(*(volatile uint8_t *)0xD012) |
+                ((uint16_t)(*(volatile uint8_t *)0xDC08) << 8);
+    if (!rng_state) rng_state = 0xbeef;
+}
 
 uint16_t plat_rand(void) {
     /* xorshift16 */
