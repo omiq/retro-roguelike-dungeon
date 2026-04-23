@@ -8,7 +8,7 @@
 #include "platform.h"
 
 static const uint8_t glyph_native[G_COUNT] = {
-    '.','#','+','@','E','$','!','/','>','%', ' ','*'
+    '.','#','+','@','E','$','!','/','>','%', ' ','*', 'h','m','&'
 };
 
 static const uint8_t colour_native[8] = {

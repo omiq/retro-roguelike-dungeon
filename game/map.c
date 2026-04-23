@@ -10,6 +10,7 @@
  * Unknown chars default to G_FLOOR.
  */
 #include "map.h"
+#include "enemy_types.h"
 #include "../platform/platform.h"
 
 uint8_t       map_w;
@@ -54,18 +55,23 @@ static const char * const rooms[ROOM_COUNT][ROOM_H] = {
     }
 };
 
-static glyph_t ascii_to_glyph(char c, uint8_t *is_spawn, glyph_t *spawn_g) {
+static glyph_t ascii_to_glyph(char c, uint8_t *is_spawn, glyph_t *spawn_g,
+                              int8_t *type_idx) {
     *is_spawn = 0;
+    *type_idx = -1;
     switch (c) {
         case '#': return G_WALL;
         case '+': return G_DOOR;
         case '.': return G_FLOOR;
         case ' ': return G_SPACE;
         case '@': *is_spawn = 1; *spawn_g = G_PLAYER; return G_FLOOR;
-        case 'K': case 'G': case 'R': case 'H':
-                  *is_spawn = 1; *spawn_g = G_ENEMY;  return G_FLOOR;
-        case 'I':
-        case 'P': *is_spawn = 1; *spawn_g = G_POTION; return G_FLOOR;
+        case 'K': case 'G': case 'R':
+                  *is_spawn = 1; *spawn_g = G_ENEMY;
+                  *type_idx = enemy_type_from_marker(c);
+                  return G_FLOOR;
+        case 'H': *is_spawn = 1; *spawn_g = G_HEALTH; return G_FLOOR;
+        case 'P': *is_spawn = 1; *spawn_g = G_MAGIC;  return G_FLOOR;
+        case 'I': *is_spawn = 1; *spawn_g = G_IDOL;   return G_FLOOR;
         case '$': *is_spawn = 1; *spawn_g = G_GOLD;   return G_FLOOR;
         case '/': *is_spawn = 1; *spawn_g = G_WEAPON; return G_FLOOR;
         case '%': return G_CORPSE;
@@ -96,9 +102,10 @@ void map_load(uint8_t room_index) {
         for (x = 0; x < map_w; x++) {
             uint8_t is_spawn;
             glyph_t sg = 0;
+            int8_t  ti = -1;
             char ch = row[x];
             if (ch == '\0') { map_tiles[y][x] = G_FLOOR; continue; }
-            map_tiles[y][x] = ascii_to_glyph(ch, &is_spawn, &sg);
+            map_tiles[y][x] = ascii_to_glyph(ch, &is_spawn, &sg, &ti);
             if (is_spawn) {
                 if (sg == G_PLAYER) {
                     map_player_x = x;
@@ -107,6 +114,7 @@ void map_load(uint8_t room_index) {
                     map_spawns[map_spawn_count].x = x;
                     map_spawns[map_spawn_count].y = y;
                     map_spawns[map_spawn_count].g = sg;
+                    map_spawns[map_spawn_count].type_idx = ti;
                     map_spawn_count++;
                 }
             }

@@ -20,6 +20,9 @@ static const uint8_t glyph_native[G_COUNT] = {
     /* G_CORPSE */ '%',
     /* G_SPACE  */ ' ',
     /* G_BORDER */ '*',
+    /* G_HEALTH */ 'h',
+    /* G_MAGIC  */ 'm',
+    /* G_IDOL   */ '&',
 };
 
 static const uint8_t colour_native[8] = {

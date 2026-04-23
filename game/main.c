@@ -12,6 +12,7 @@
 #include "../platform/platform.h"
 #include "map.h"
 #include "entity.h"
+#include "enemy_types.h"
 
 static uint8_t colour_for_glyph(glyph_t g) {
     switch (g) {
@@ -24,13 +25,16 @@ static uint8_t colour_for_glyph(glyph_t g) {
         case G_WEAPON: return COL_CYAN;
         case G_STAIRS: return COL_GREEN;
         case G_CORPSE: return COL_RED;
+        case G_HEALTH: return COL_RED;
+        case G_MAGIC:  return COL_MAGENTA;
+        case G_IDOL:   return COL_YELLOW;
         default:       return COL_WHITE;
     }
 }
 
 /* Status bar drawn on the row immediately below the map. */
 static char status_buf[41];
-static uint8_t prev_hp, prev_gold, prev_dmg;
+static uint8_t prev_hp, prev_gold, prev_dmg, prev_magic, prev_idols;
 
 static void u8_to_str(uint8_t v, char *out) {
     uint8_t h = v / 100, t = (v / 10) % 10, o = v % 10, p = 0;
@@ -40,40 +44,76 @@ static void u8_to_str(uint8_t v, char *out) {
     out[p] = '\0';
 }
 
+static void write_field(const char *label, uint8_t value, uint8_t col) {
+    uint8_t i;
+    char tmp[4];
+    for (i = 0; label[i]; i++) status_buf[col + i] = label[i];
+    u8_to_str(value, tmp);
+    for (i = 0; tmp[i]; i++) status_buf[col + 3 + i] = tmp[i];
+}
+
 static void build_status(void) {
     uint8_t i;
     char tmp[4];
     for (i = 0; i < 40; i++) status_buf[i] = ' ';
     status_buf[40] = '\0';
-    status_buf[0] = 'H'; status_buf[1] = 'P'; status_buf[2] = ':';
-    u8_to_str(player_hp, tmp);
-    for (i = 0; tmp[i]; i++) status_buf[3 + i] = tmp[i];
-    status_buf[9]  = 'G'; status_buf[10] = 'L'; status_buf[11] = 'D'; status_buf[12] = ':';
+    /* Layout: "HP:nn MP:nn $:nn I:n/nn DMG:nn" in 40 cols. */
+    write_field("HP:",  player_hp,    0);
+    write_field("MP:",  player_magic, 7);
+    /* money: use '$' label */
+    status_buf[14] = '$'; status_buf[15] = ':';
     u8_to_str(player_gold, tmp);
-    for (i = 0; tmp[i]; i++) status_buf[13 + i] = tmp[i];
-    status_buf[19] = 'D'; status_buf[20] = 'M'; status_buf[21] = 'G'; status_buf[22] = ':';
-    u8_to_str(player_dmg, tmp);
+    for (i = 0; tmp[i]; i++) status_buf[16 + i] = tmp[i];
+    /* idols "I:n/nn" */
+    status_buf[21] = 'I'; status_buf[22] = ':';
+    u8_to_str(player_idols, tmp);
     for (i = 0; tmp[i]; i++) status_buf[23 + i] = tmp[i];
+    status_buf[23 + i] = '/';
+    {
+        char tmp2[4];
+        uint8_t j;
+        u8_to_str(idols_total, tmp2);
+        for (j = 0; tmp2[j]; j++) status_buf[24 + i + j] = tmp2[j];
+    }
+    write_field("DMG:", player_dmg, 31);
 }
 
 static void redraw_status_if_changed(void) {
-    if (player_hp == prev_hp && player_gold == prev_gold && player_dmg == prev_dmg)
+    if (player_hp    == prev_hp    &&
+        player_gold  == prev_gold  &&
+        player_dmg   == prev_dmg   &&
+        player_magic == prev_magic &&
+        player_idols == prev_idols)
         return;
     build_status();
     plat_puts(0, map_h, status_buf, COL_CYAN);
-    prev_hp = player_hp; prev_gold = player_gold; prev_dmg = player_dmg;
+    prev_hp    = player_hp;
+    prev_gold  = player_gold;
+    prev_dmg   = player_dmg;
+    prev_magic = player_magic;
+    prev_idols = player_idols;
+}
+
+/* Returns the colour to draw entity ei in (type colour for enemies, else default). */
+static uint8_t colour_for_entity(int8_t ei) {
+    int8_t t;
+    if (ei < 0) return COL_WHITE;
+    if (entities[ei].g == G_ENEMY) {
+        t = entities[ei].type_idx;
+        if (t >= 0 && t < ENEMY_TYPE_COUNT) return ENEMY_TYPES[t].colour;
+    }
+    return colour_for_glyph(entities[ei].g);
 }
 
 /* Redraw one cell from map + any live entity sitting on it. */
 static void redraw_cell(uint8_t x, uint8_t y) {
     int8_t ei = entity_at(x, y);
-    glyph_t g;
     if (ei >= 0 && entities[ei].alive) {
-        g = entities[ei].g;
+        plat_putc(x, y, entities[ei].g, colour_for_entity(ei));
     } else {
-        g = map_get(x, y);
+        glyph_t g = map_get(x, y);
+        plat_putc(x, y, g, colour_for_glyph(g));
     }
-    plat_putc(x, y, g, colour_for_glyph(g));
 }
 
 static void initial_render(uint8_t px, uint8_t py) {
@@ -117,9 +157,12 @@ static uint8_t step_onto(uint8_t *px, uint8_t *py, uint8_t nx, uint8_t ny) {
         }
         /* Pickup. */
         switch (e->g) {
-            case G_GOLD:   player_gold++;                       break;
-            case G_POTION: if (player_hp < 250) player_hp += 3; break;
-            case G_WEAPON: player_dmg++;                        break;
+            case G_GOLD:   player_gold += 5;                     break;
+            case G_HEALTH: if (player_hp < 245) player_hp += 10; break;
+            case G_MAGIC:  if (player_magic < 250) player_magic++; break;
+            case G_IDOL:   player_idols++;                       break;
+            case G_WEAPON: player_dmg += 2;                      break;
+            case G_POTION: if (player_hp < 250) player_hp += 5;  break;
             default: break;
         }
         e->alive = 0;
@@ -188,5 +231,11 @@ int main(void) {
             player_hp -= hit;
         }
         redraw_status_if_changed();
+
+        /* Win: collected every idol on this floor. */
+        if (idols_total > 0 && player_idols >= idols_total) {
+            plat_puts(0, 0, "ALL IDOLS FOUND - press Q", COL_YELLOW);
+            for (;;) if (plat_key_wait() == K_QUIT) { plat_shutdown(); return 0; }
+        }
     }
 }

@@ -14,9 +14,10 @@
 typedef struct {
     uint8_t x, y;
     glyph_t g;
-    uint8_t alive;   /* 0 = free slot, 1 = live */
+    uint8_t alive;      /* 0 = free slot, 1 = live */
     int8_t  hp;
     uint8_t dmg;
+    int8_t  type_idx;   /* ENEMY_TYPE_* for enemies, -1 otherwise */
 } entity_t;
 
 extern entity_t entities[ENTITY_MAX];
@@ -26,6 +27,9 @@ extern uint8_t  entity_count;
 extern uint8_t player_hp;
 extern uint8_t player_dmg;
 extern uint8_t player_gold;
+extern uint8_t player_magic;
+extern uint8_t player_idols;
+extern uint8_t idols_total;    /* set at map_load from spawn count */
 
 /* Move event buffer — entity_ai_turn fills this so render can redraw
  * only the cells that changed instead of the whole screen. */

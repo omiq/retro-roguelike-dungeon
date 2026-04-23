@@ -3,36 +3,69 @@
  * Enemies step toward player each turn if not blocked; bump = attack.
  */
 #include "entity.h"
+#include "enemy_types.h"
 #include "map.h"
+#include "../platform/platform.h"
+
+const enemy_type_t ENEMY_TYPES[ENEMY_TYPE_COUNT] = {
+    /* marker, hp, dmg, spd, arm, colour,      name */
+    {  'G',    30,  5,   1,  10, COL_GREEN,    "goblin" },
+    {  'R',    15,  5,   2,   0, COL_CYAN,     "rat"    },
+    {  'K',    20,  4,   1,   5, COL_MAGENTA,  "kobold" },
+};
+
+int8_t enemy_type_from_marker(char c) {
+    uint8_t i;
+    for (i = 0; i < ENEMY_TYPE_COUNT; i++)
+        if (ENEMY_TYPES[i].marker == c) return (int8_t)i;
+    return -1;
+}
 
 entity_t     entities[ENTITY_MAX];
 uint8_t      entity_count;
 uint8_t      player_hp;
 uint8_t      player_dmg;
 uint8_t      player_gold;
+uint8_t      player_magic;
+uint8_t      player_idols;
+uint8_t      idols_total;
 move_event_t move_events[MOVE_EVENTS_MAX];
 uint8_t      move_event_count;
 
 void entity_init_from_map_spawns(void) {
     uint8_t i;
+    int8_t  t;
     entity_count = 0;
     for (i = 0; i < map_spawn_count && entity_count < ENTITY_MAX; i++) {
-        entities[entity_count].x     = map_spawns[i].x;
-        entities[entity_count].y     = map_spawns[i].y;
-        entities[entity_count].g     = map_spawns[i].g;
-        entities[entity_count].alive = 1;
+        entities[entity_count].x        = map_spawns[i].x;
+        entities[entity_count].y        = map_spawns[i].y;
+        entities[entity_count].g        = map_spawns[i].g;
+        entities[entity_count].alive    = 1;
+        entities[entity_count].type_idx = map_spawns[i].type_idx;
         if (map_spawns[i].g == G_ENEMY) {
-            entities[entity_count].hp  = 3;
-            entities[entity_count].dmg = 1;
+            t = map_spawns[i].type_idx;
+            if (t >= 0 && t < ENEMY_TYPE_COUNT) {
+                entities[entity_count].hp  = (int8_t)ENEMY_TYPES[t].hp;
+                entities[entity_count].dmg = ENEMY_TYPES[t].dmg;
+            } else {
+                entities[entity_count].hp  = 10;
+                entities[entity_count].dmg = 2;
+            }
         } else {
             entities[entity_count].hp  = 0;
             entities[entity_count].dmg = 0;
         }
         entity_count++;
     }
-    player_hp   = 10;
-    player_dmg  = 2;
-    player_gold = 0;
+    /* Player stats bumped to match enemy HP scale (goblin=30, kobold=20). */
+    player_hp    = 30;
+    player_dmg   = 10;
+    player_gold  = 0;
+    player_magic = 0;
+    player_idols = 0;
+    idols_total  = 0;
+    for (i = 0; i < entity_count; i++)
+        if (entities[i].g == G_IDOL) idols_total++;
 }
 
 int8_t entity_at(uint8_t x, uint8_t y) {

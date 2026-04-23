@@ -22,6 +22,7 @@ extern glyph_t map_tiles[MAP_MAX_H][MAP_MAX_W];
 typedef struct {
     uint8_t x, y;
     glyph_t g;
+    int8_t  type_idx;   /* ENEMY_TYPE_* when g == G_ENEMY, else -1 */
 } map_spawn_t;
 extern map_spawn_t map_spawns[MAP_MAX_SPAWNS];
 extern uint8_t     map_spawn_count;
