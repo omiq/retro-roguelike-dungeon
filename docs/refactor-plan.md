@@ -367,16 +367,138 @@ Not a retro-c commit; parallel work in `/Users/chrisg/github/8bitworkshop`.
   checklist, debugging guide, procedure for adding features and new
   adapters, procedure for regenerating IDE single-file demos.
 
+### 2026-04-23 — Phase 4.2 (commit `5abf231`)
+
+Enemy type table + HP/magic/idol pickup semantics corrected per author.
+
+- `game/enemy_types.h` + `game/entity.c`: introduced `ENEMY_TYPES[]`
+  static table (marker, hp, dmg, speed, armour, colour, name). Types:
+  goblin (G, hp 30, green), rat (R, hp 15, cyan), kobold (K, hp 20,
+  magenta). Horror dropped — H marker repurposed.
+- `game/glyphs.h`: +G_HEALTH (12), +G_MAGIC (13), +G_IDOL (14).
+  G_COUNT bumped 12 → 15. All 7 adapters' `glyph_native[]` extended
+  with `'h','m','&'`.
+- `game/map.c`: `ascii_to_glyph` revised per author's intent —
+  H = health pickup (was enemy), P = magic/power pickup,
+  I = idol (collect-all mcguffin). map_spawn_t carries type_idx.
+- `game/entity.h/c`: +player_magic, +player_idols, +idols_total.
+  Entity init reads stats from ENEMY_TYPES[type_idx]. Player stats
+  scaled to match: hp 30, dmg 10.
+- `game/main.c`: enemies drawn in own type colour (not generic red).
+  step_onto pickups: health +10 hp, magic +1 mp, idol increment,
+  weapon +2 dmg. Status bar rewritten to 40 cols: "HP:n MP:n $:n
+  I:n/N DMG:n". Win state "ALL IDOLS FOUND" when player_idols ≥
+  idols_total.
+- `colour_for_glyph`: G_HEALTH = RED, G_MAGIC = MAGENTA, G_IDOL = YELLOW.
+- `scripts/bundle-ide-demo.py`: written. Concatenates `game/*.c` +
+  `platform/plat_<t>.c` into a single-file IDE preset. Strips local
+  `#include`, dedupes system headers. Verified c64 bundled build
+  produces byte-identical 8117-byte PRG vs modular build.
+- Ran bundle script for all 7 IDE presets (c64/pet/plus4/apple2/
+  apple2e/atari8-800/bbc).
+- C64 PRG: 8117 bytes.
+
+### 2026-04-23 — Phase 4.3 (commit `ccd777b`)
+
+Original combat + movement mechanics ported verbatim from
+`ARCHIVE_pre_refactor/dungeon_multi.c` (attack(), enemy_attack(),
+move_enemies() functions).
+
+- `game/entity.c`: `entity_player_attack()` rolls d20 (`plat_rand%20+1`).
+  Hit if `rnum > armour + speed`. On hit: enemy.hp -= weapon. On miss +
+  player 4-way-adjacent: enemy lands free `strength` hit (original's
+  "revenge on miss" mechanic). Kills leave G_CORPSE on map.
+- `game/entity.c`: `enemy_attack_player()` rolls d20; >10 → enemy hits
+  for `strength`, ≤10 → player counter-attacks for flat 5 damage.
+- `game/entity.c`: `entity_ai_turn()` rewritten per type:
+  - **Rat** (type_idx 1): random NSEW step (`rand%4+1` → 1=up, 2=right,
+    3=down, 4=left).
+  - **Goblin + Kobold**: both axes toward player simultaneously
+    (diagonal-capable chase).
+  - Blocked target: stay put. Target cell = player: invoke
+    `enemy_attack_player` instead of recording move.
+- `entity_adjacent_damage` retained as no-op stub for API back-compat;
+  damage now applied inside AI turn via enemy_attack_player. Main loop
+  post-AI just checks `player_hp == 0` for death.
+- `game/main.c`: `step_onto` routes enemy bump into
+  `entity_player_attack` (was flat-damage kill). Player stays in place
+  on bump — attack consumes the turn whether hit or miss.
+- Hit probabilities emerge from type stats: goblin needs d20>11 (45%),
+  rat needs d20>2 (90%), kobold needs d20>6 (70%).
+- C64 PRG: 8395 bytes (+278).
+
+### 2026-04-23 — Phase 4.4 (commit `372e03b`)
+
+Fireball spell ported from original (case 'f' in dungeon_multi.c).
+
+- `game/glyphs.h`: +G_BOLT (index 15). G_COUNT 15 → 16. All 8 adapters'
+  `glyph_native[]` extended with `'*'`.
+- `game/main.c`:
+  - `direction_x`, `direction_y` statics — updated on every player
+    move (default east). Matches original globals.
+  - `cast_fireball(px, py)` — requires `player_magic > 5`, costs 5 MP
+    up front. Walks along (direction_x, direction_y), animating
+    G_BOLT at each floor cell with `plat_delay_ms(80)`, consuming 1
+    MP per tile. Stops on non-floor OR entity OR MP depleted.
+    On impact: `entity_player_attack(weapon=10)` same d20 roll as
+    bump attack. Kills leave G_CORPSE.
+- `K_FIRE` (Z / space / return) now casts instead of being no-op.
+- `colour_for_glyph`: G_BOLT = COL_YELLOW.
+- C64 PRG: 8917 bytes.
+
 ### To-do (next passes)
+
+#### Game features from raylib version (omiq/Raylib-Dungeon)
+
+Comparison of raylib version shows same 2 enemy types (goblin, rat —
+we've added kobold on top) but several mechanics the 8-bit port
+doesn't have yet:
+
+- **AI wake range** — `is_within_range(player, enemy, 6)`: enemies
+  only move when player is within 6 tiles. Currently enemies chase
+  from anywhere on the map. One-line change in `entity_ai_turn`.
+- **Keys + doors** — `'k'` pickup grants a key, `'+'` (closed door)
+  consumes a key to open into `'-'` (partially open, passable).
+  Already have G_DOOR + G_KEY would be new glyph.
+- **Sword pickup** — distinct from generic weapon upgrade; bumps
+  bump damage from 10 to higher value when equipped.
+- **`placeObject()` procgen** — random placement of enemies/items
+  based on current dungeon level; counts scale with depth.
+- **Fog of war / visibility map** — `visibility_map[]` tracks
+  explored cells; unseen drawn as space.
+- **Partial door state** (`'-'`) — passable after keyed.
+
+#### Portability / infrastructure
 
 - **Phase 5**: GB (GBDK tile-based adapter) + NES (cc65 nes nametable).
   Real portability test — API leaks 40×25 assumptions crack here.
 - **Phase 6**: delete `ARCHIVE_pre_refactor/` after every salvageable
   asset has been migrated (charset-c64 data, maze.h gen, cpm if kept).
-- Game features: procedural map gen, multi-room via stairs (G_STAIRS
-  already parsed), enemy type table, inventory, title/menu, sound via
-  `plat_beep`.
 - VIC-20 revisit: add `TIER_MINIMAL` flag shrinking tables so
-  unexpanded build fits.
-- `scripts/bundle-ide-demo.py` to regenerate single-file IDE presets
-  from `game/` + `platform/plat_<plat>.c` automatically.
+  unexpanded `vic20.cfg` (3.5 KB MAIN) build fits. Without it, the
+  demo overflows default config by ~2.5 KB.
+- Procedural map gen (maze.h in archive); multi-room via G_STAIRS
+  (already parsed, needs `map_load(next_room)`); title/menu screen;
+  sound via `plat_beep` (currently no-op in every adapter).
+
+#### Known unshipped IDE targets
+
+- nes, gb, atari5200, atari7800, c128 — not yet ported. All would be
+  Phase 5 or later.
+
+## Reference — raylib/modern rewrites
+
+Author maintains modern rewrites using raylib (not cc65). Different
+portability story — these use raylib's graphics+audio+input, so game
+logic is portable across raylib-supporting platforms (desktop,
+WebAssembly via emscripten) but renderer/asset code does not map
+back onto our 15-fn text-mode `platform.h`.
+
+- `github.com/omiq/Raylib-Dungeon` — native raylib build
+- `github.com/omiq/Raylib-Emscripten-Dungeon` — same game, WASM web build
+- `makerhacks.itch.io/retro-rogue-dungeon` — published game page
+
+Useful as a source of game design / balance / AI tuning references
+when porting features into `game/*.c`. Rendering cannot transplant;
+game logic can (as done with attack / enemy_attack / move_enemies
+ports in Phase 4.3 + fireball in 4.4).
