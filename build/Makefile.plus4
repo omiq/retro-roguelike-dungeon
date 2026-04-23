@@ -1,0 +1,20 @@
+include build/common.mk
+
+TARGET   = plus4
+OUT      = dungeon-plus4.prg
+SOURCES  = $(GAME_SOURCES) platform/plat_plus4.c
+CC       = cl65
+CFLAGS   = -t $(TARGET) -O -Cl -I platform -I game
+
+all: $(OUT)
+
+$(OUT): $(SOURCES)
+	$(CC) $(CFLAGS) -o $@ $(SOURCES)
+
+clean:
+	rm -f $(OUT) $(SOURCES:.c=.o)
+
+run: $(OUT)
+	xplus4 $(OUT)
+
+.PHONY: all clean run

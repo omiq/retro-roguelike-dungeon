@@ -1,0 +1,21 @@
+include build/common.mk
+
+TARGET   = vic20
+OUT      = dungeon-vic20.prg
+SOURCES  = $(GAME_SOURCES) platform/plat_vic20.c
+CC       = cl65
+# +24k expansion cart to fit ~7KB code + game state
+CFLAGS   = -t $(TARGET) -O -Cl -I platform -I game -u __EXEHDR__ -C vic20-32k.cfg
+
+all: $(OUT)
+
+$(OUT): $(SOURCES)
+	$(CC) $(CFLAGS) -o $@ $(SOURCES)
+
+clean:
+	rm -f $(OUT) $(SOURCES:.c=.o)
+
+run: $(OUT)
+	xvic -memory all $(OUT)
+
+.PHONY: all clean run
