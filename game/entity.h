@@ -30,6 +30,11 @@ extern uint8_t player_gold;
 extern uint8_t player_magic;
 extern uint8_t player_idols;
 extern uint8_t idols_total;    /* set at map_load from spawn count */
+extern uint8_t player_keys;    /* unlock doors */
+
+/* Wake range for AI — enemies within this tile radius chase player.
+ * Ported from raylib version's is_within_range(player, enemy, 6). */
+#define AI_WAKE_RANGE 6
 
 /* Move event buffer — entity_ai_turn fills this so render can redraw
  * only the cells that changed instead of the whole screen. */

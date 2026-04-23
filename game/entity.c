@@ -26,6 +26,7 @@ uint8_t      player_gold;
 uint8_t      player_magic;
 uint8_t      player_idols;
 uint8_t      idols_total;
+uint8_t      player_keys;
 move_event_t move_events[MOVE_EVENTS_MAX];
 uint8_t      move_event_count;
 
@@ -73,6 +74,7 @@ void entity_init_from_map_spawns(void) {
     player_gold  = 0;
     player_magic = 0;
     player_idols = 0;
+    player_keys  = 0;
     idols_total  = 0;
     for (i = 0; i < entity_count; i++)
         if (entities[i].g == G_IDOL) idols_total++;
@@ -190,6 +192,16 @@ static void record_move(uint8_t i, int8_t dx, int8_t dy) {
     entities[i].y += dy;
 }
 
+/* Squared-distance check vs AI_WAKE_RANGE (ported from raylib's
+ * is_within_range). Keeps the arithmetic in uint16 to avoid float. */
+static uint8_t within_wake_range(uint8_t px, uint8_t py,
+                                 uint8_t ex, uint8_t ey) {
+    int16_t dx = (int16_t)ex - (int16_t)px;
+    int16_t dy = (int16_t)ey - (int16_t)py;
+    uint16_t d2 = (uint16_t)(dx * dx + dy * dy);
+    return d2 <= (AI_WAKE_RANGE * AI_WAKE_RANGE) ? 1 : 0;
+}
+
 void entity_ai_turn(uint8_t px, uint8_t py) {
     uint8_t i;
     int8_t  dx, dy;
@@ -198,6 +210,9 @@ void entity_ai_turn(uint8_t px, uint8_t py) {
     move_event_count = 0;
     for (i = 0; i < entity_count; i++) {
         if (!entities[i].alive || entities[i].g != G_ENEMY) continue;
+        /* Sleep if player far away. Rats stay put too — simpler + matches
+         * raylib version, where only woken enemies move. */
+        if (!within_wake_range(px, py, entities[i].x, entities[i].y)) continue;
 
         if (entities[i].type_idx == ENEMY_TYPE_RAT) {
             /* Random: rand()%4+1 (1..4) -> 1=up 2=right 3=down 4=left. */

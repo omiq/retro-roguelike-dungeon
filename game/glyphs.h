@@ -25,6 +25,7 @@ typedef uint8_t glyph_t;
 #define G_MAGIC   13   /* restores mana */
 #define G_IDOL    14   /* mcguffin — collect all to win */
 #define G_BOLT    15   /* fireball projectile in flight */
-#define G_COUNT   16
+#define G_KEY     16   /* unlocks closed doors */
+#define G_COUNT   17
 
 #endif

@@ -29,6 +29,7 @@ static uint8_t colour_for_glyph(glyph_t g) {
         case G_MAGIC:  return COL_MAGENTA;
         case G_IDOL:   return COL_YELLOW;
         case G_BOLT:   return COL_YELLOW;
+        case G_KEY:    return COL_YELLOW;
         default:       return COL_WHITE;
     }
 }
@@ -81,7 +82,7 @@ static void cast_fireball(uint8_t px, uint8_t py) {
 
 /* Status bar drawn on the row immediately below the map. */
 static char status_buf[41];
-static uint8_t prev_hp, prev_gold, prev_dmg, prev_magic, prev_idols;
+static uint8_t prev_hp, prev_gold, prev_dmg, prev_magic, prev_idols, prev_keys;
 
 static void u8_to_str(uint8_t v, char *out) {
     uint8_t h = v / 100, t = (v / 10) % 10, o = v % 10, p = 0;
@@ -104,25 +105,25 @@ static void build_status(void) {
     char tmp[4];
     for (i = 0; i < 40; i++) status_buf[i] = ' ';
     status_buf[40] = '\0';
-    /* Layout: "HP:nn MP:nn $:nn I:n/nn DMG:nn" in 40 cols. */
-    write_field("HP:",  player_hp,    0);
-    write_field("MP:",  player_magic, 7);
-    /* money: use '$' label */
+    /* Layout: "HP:nn MP:nn $:nn K:n I:n/nn" in 40 cols. */
+    write_field("HP:", player_hp,    0);
+    write_field("MP:", player_magic, 7);
     status_buf[14] = '$'; status_buf[15] = ':';
     u8_to_str(player_gold, tmp);
     for (i = 0; tmp[i]; i++) status_buf[16 + i] = tmp[i];
-    /* idols "I:n/nn" */
-    status_buf[21] = 'I'; status_buf[22] = ':';
-    u8_to_str(player_idols, tmp);
+    status_buf[21] = 'K'; status_buf[22] = ':';
+    u8_to_str(player_keys, tmp);
     for (i = 0; tmp[i]; i++) status_buf[23 + i] = tmp[i];
-    status_buf[23 + i] = '/';
+    status_buf[27] = 'I'; status_buf[28] = ':';
+    u8_to_str(player_idols, tmp);
+    for (i = 0; tmp[i]; i++) status_buf[29 + i] = tmp[i];
+    status_buf[29 + i] = '/';
     {
         char tmp2[4];
         uint8_t j;
         u8_to_str(idols_total, tmp2);
-        for (j = 0; tmp2[j]; j++) status_buf[24 + i + j] = tmp2[j];
+        for (j = 0; tmp2[j]; j++) status_buf[30 + i + j] = tmp2[j];
     }
-    write_field("DMG:", player_dmg, 31);
 }
 
 static void redraw_status_if_changed(void) {
@@ -130,7 +131,8 @@ static void redraw_status_if_changed(void) {
         player_gold  == prev_gold  &&
         player_dmg   == prev_dmg   &&
         player_magic == prev_magic &&
-        player_idols == prev_idols)
+        player_idols == prev_idols &&
+        player_keys  == prev_keys)
         return;
     build_status();
     plat_puts(0, map_h, status_buf, COL_CYAN);
@@ -139,6 +141,7 @@ static void redraw_status_if_changed(void) {
     prev_dmg   = player_dmg;
     prev_magic = player_magic;
     prev_idols = player_idols;
+    prev_keys  = player_keys;
 }
 
 /* Returns the colour to draw entity ei in (type colour for enemies, else default). */
@@ -189,7 +192,16 @@ static void initial_render(uint8_t px, uint8_t py) {
 static uint8_t step_onto(uint8_t *px, uint8_t *py, uint8_t nx, uint8_t ny) {
     int8_t ei;
     glyph_t target = map_get(nx, ny);
-    if (map_is_solid(target)) return 0;
+    /* Door: needs a key, consumes one, converts to floor so future
+     * steps are free. Ported from raylib version '+' -> '-' (passable). */
+    if (target == G_DOOR) {
+        if (player_keys == 0) return 0;
+        player_keys--;
+        map_set(nx, ny, G_FLOOR);
+        plat_putc(nx, ny, G_FLOOR, colour_for_glyph(G_FLOOR));
+    } else if (map_is_solid(target)) {
+        return 0;
+    }
     ei = entity_at(nx, ny);
     if (ei >= 0) {
         entity_t *e = &entities[ei];
@@ -208,6 +220,7 @@ static uint8_t step_onto(uint8_t *px, uint8_t *py, uint8_t nx, uint8_t ny) {
             case G_IDOL:   player_idols++;                       break;
             case G_WEAPON: player_dmg += 2;                      break;
             case G_POTION: if (player_hp < 250) player_hp += 5;  break;
+            case G_KEY:    player_keys++;                        break;
             default: break;
         }
         e->alive = 0;

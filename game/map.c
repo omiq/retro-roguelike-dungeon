@@ -42,7 +42,7 @@ static const char * const rooms[ROOM_COUNT][ROOM_H] = {
         ".###########.............#.......#......",
         ".#.........#.............#.......#......",
         ".#.........#..$..........#...K...#......",
-        ".#.....H...#.............#.......#......",
+        ".#.....H...#.....k.......#.......#......",
         ".#...K.....+.............#.......#......",
         ".#.........#....../.I....+....G..#......",
         ".#.........#.............#.......#......",
@@ -74,6 +74,7 @@ static glyph_t ascii_to_glyph(char c, uint8_t *is_spawn, glyph_t *spawn_g,
         case 'I': *is_spawn = 1; *spawn_g = G_IDOL;   return G_FLOOR;
         case '$': *is_spawn = 1; *spawn_g = G_GOLD;   return G_FLOOR;
         case '/': *is_spawn = 1; *spawn_g = G_WEAPON; return G_FLOOR;
+        case 'k': *is_spawn = 1; *spawn_g = G_KEY;    return G_FLOOR;
         case '%': return G_CORPSE;
         case '>': return G_STAIRS;
         default:  return G_FLOOR;
@@ -89,7 +90,15 @@ void map_load(uint8_t room_index) {
     if (room_index >= ROOM_COUNT) room_index = 0;
 
     map_w = (sw < ROOM_W) ? sw : ROOM_W;
-    map_h = (sh < ROOM_H) ? sh : ROOM_H;
+    /* Reserve 2 rows at the bottom: 1 for status, 1 blank safety row.
+     * Some targets (BBC cc65 conio) scroll the screen if any char lands on
+     * the final row — keeping it empty avoids the scroll. */
+    if (sh >= 2) {
+        uint8_t mh = sh - 2;
+        map_h = (mh < ROOM_H) ? mh : ROOM_H;
+    } else {
+        map_h = ROOM_H;
+    }
     if (map_w > MAP_MAX_W) map_w = MAP_MAX_W;
     if (map_h > MAP_MAX_H) map_h = MAP_MAX_H;
 
