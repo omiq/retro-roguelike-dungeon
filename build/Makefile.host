@@ -1,0 +1,20 @@
+include build/common.mk
+
+OUT      = dungeon-host
+SOURCES  = $(GAME_SOURCES) platform/plat_host.c
+CC       = gcc
+CFLAGS   = -std=c99 -Wall -O2 -Iplatform -Igame -DPLAT_HOST=1
+LDFLAGS  = -lncurses
+
+all: $(OUT)
+
+$(OUT): $(SOURCES)
+	$(CC) $(CFLAGS) -o $@ $(SOURCES) $(LDFLAGS)
+
+clean:
+	rm -f $(OUT)
+
+run: $(OUT)
+	./$(OUT)
+
+.PHONY: all clean run

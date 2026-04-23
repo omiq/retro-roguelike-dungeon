@@ -1,0 +1,17 @@
+include build/common.mk
+
+TARGET   = apple2
+OUT      = dungeon-apple2
+SOURCES  = $(GAME_SOURCES) platform/plat_apple2.c
+CC       = cl65
+CFLAGS   = -t $(TARGET) -O -Cl -I platform -I game
+
+all: $(OUT)
+
+$(OUT): $(SOURCES)
+	$(CC) $(CFLAGS) -o $@ $(SOURCES)
+
+clean:
+	rm -f $(OUT) $(SOURCES:.c=.o)
+
+.PHONY: all clean
