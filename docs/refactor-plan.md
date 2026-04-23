@@ -231,3 +231,152 @@ Clone retro-c, make `legacy/` dir, move existing .c files in, commit. Then land
 `platform/platform.h` + `plat_c64.c` + `game/main.c` with just "draw @, read key,
 move @". Builds c64 PRG via `make -f build/Makefile.c64`. That's Phase 0+1
 baseline and gives a clean floor to migrate onto.
+
+---
+
+## PROGRESS LOG
+
+Entries append-only. Most recent at bottom. Each entry = date, phase,
+bullet list of concrete changes, one "why" line where non-obvious.
+
+### 2026-04-23 — Phase 0+1 (commit `4e40110`)
+
+Scaffolding landed.
+
+- Moved 45 pre-refactor files (all `.c/.h/.prg/.o/.bin/.s/.zip/.d64/.com/.dsk/.png/.sh`
+  + `demo/ python/ rasterscroll/ src/ welcome/ __pycache__/`) into
+  `ARCHIVE_pre_refactor/` with README banner "Do not edit."
+- `platform/platform.h` — frozen 15-function API: `plat_init/shutdown`,
+  `plat_screen_w/h`, `plat_cls/putc/puts`, `plat_key_pressed/wait`,
+  `plat_delay_ms`, `plat_rand/seed_rand`, `plat_beep`. K_* key codes
+  (UP/DOWN/LEFT/RIGHT/FIRE/QUIT/OTHER/NONE). COL_* colour enums
+  (BLACK/WHITE/RED/GREEN/BLUE/YELLOW/CYAN/MAGENTA).
+- `game/glyphs.h` — G_FLOOR/WALL/DOOR/PLAYER/ENEMY/GOLD/POTION/WEAPON/
+  STAIRS/CORPSE/SPACE/BORDER (G_COUNT=12). Why: symbolic glyphs keep
+  game code ignorant of PETSCII/ATASCII/tile# differences across targets.
+- `platform/plat_c64.c` — cc65 + conio adapter. PETSCII → K_* key
+  translation (cursor chars 145/17/157/29, plus WASD fallback), xorshift16
+  RNG, empty `plat_beep` stub.
+- `game/main.c` — smoke test: draws `@` centered, arrows/WASD move, Q quits.
+  No map, no enemies yet — just proves the adapter plumbing.
+- `build/common.mk` + `build/Makefile.c64` — `cl65 -t c64 -O -Cl`.
+- `README.md` rewritten with new layout + golden rules + roadmap.
+
+### 2026-04-23 — Phase 2 (commit `1c0f1bb`)
+
+Map module migrated.
+
+- `game/map.h` — MAP_MAX_W/H constants, map_spawn_t, extern tile grid,
+  `map_load/get/is_solid`. Why: `MAP_MAX_*` not `40/25`; sizing decided
+  at init from `plat_screen_w/h`.
+- `game/map.c` — room 0 ported from `ARCHIVE_pre_refactor/map.h` (24 rows
+  × 40 cols, hand-drawn). `ascii_to_glyph()` converts `#.+@KGRH$/%I P>`
+  raw chars into G_* at load time — game never sees ASCII after this.
+  Spawn markers (`@`, enemies, items) collected into `map_spawns[]`
+  array with glyph id. Why: player start + entity positions encoded in
+  the template; parsing once at load simplifies downstream code.
+- `game/main.c` — draws map via `plat_putc` with per-glyph colour, then
+  draws spawns on top, then player. Movement checks `map_is_solid()`.
+- `build/common.mk` — added `game/map.c`.
+- `platform/platform.h` — fixed nested `/*` in header comment.
+- C64 PRG: 3467 bytes.
+
+### 2026-04-23 — Phase 3 (commit `0dad94d`)
+
+Entities, combat, pickups, status bar.
+
+- `game/entity.h/c` — `entity_t` (x, y, glyph, alive, hp, dmg). Spawned
+  from `map_spawns[]` at init: enemies hp=3/dmg=1, items hp/dmg=0.
+  - `entity_at(x, y)` → index or -1
+  - `entity_kill(idx)` marks dead + writes G_CORPSE to map
+  - `entity_ai_turn(px, py)` — greedy axis-first step, fallback secondary
+    axis if blocked. No line-of-sight yet.
+  - `entity_adjacent_damage(px, py)` — 8-way Chebyshev ≤1, sums dmg.
+- `game/main.c` turn-based loop: move → bump/pickup → enemy AI →
+  adjacent damage → status bar. `u8_to_str()` formats "HP:n GLD:n DMG:n".
+  "YOU DIED" screen at HP 0.
+- `game/map.c` — added `map_set`. `map_is_solid` now rejects G_DOOR
+  (doors block until unlocked — future work).
+- `build/common.mk` — +`game/entity.c`.
+- C64 PRG: 6213 bytes.
+
+### 2026-04-23 — Phase 3.1 (commit `dfbff91`)
+
+Incremental redraw. Stops full-screen repaint each turn.
+
+- `game/entity.h` — `move_event_t {ox, oy, nx, ny, g}` buffer +
+  `move_event_count`. Why: `entity_ai_turn` records moves without
+  drawing, main loop dispatches the redraws.
+- `game/entity.c` — `record_move()` fills buffer before mutating
+  `entities[i].x/y`. Buffer cleared at start of `entity_ai_turn`.
+- `game/main.c`:
+  - `initial_render()` draws map + spawns + player once. Never again.
+  - `redraw_cell(x, y)` generic: show live entity if present, else map.
+  - Per turn: player old + new cell, killed enemy → G_CORPSE,
+    each `move_events[i]`: old + new cell.
+  - `redraw_status_if_changed()` — only repaint status row when stats
+    differ from `prev_hp/gold/dmg`. Why: `cputsxy` is slow on CBM.
+  - Fixed bug: `K_DOWN` now reaches `map_h - 1` (was `-2`, unreachable row).
+- `game/map.c` — `map_load` reserves last row for status bar.
+- C64 PRG: 7013 bytes (+800). Worth it — no flicker.
+
+### 2026-04-23 — Phase 4 (commit `d54855f`)
+
+Widened to 7 platforms.
+
+- `platform/plat_pet.c` — mono PET, cc65 conio, 40×25.
+- `platform/plat_plus4.c` — TED, cc65 conio, COLOR_VIOLET (plus4/vic20
+  lack COLOR_PURPLE alias that c64.h has).
+- `platform/plat_vic20.c` — 22×23. Map auto-clips via
+  `map_w = min(plat_screen_w(), ROOM_W)`. Why: 40×24 room template
+  shows only left 22 cols on VIC-20; partial view still playable.
+- `platform/plat_apple2.c` — 40×24 mono. Ctrl-HJKL arrows (8/21/11/10).
+- `platform/plat_atari8.c` — 40×24, ATASCII cursor 28/29/30/31, EOL 155.
+- `platform/plat_host.c` — ncurses dev adapter. `plat_seed_rand(0)`
+  uses `time(NULL)`.
+- Makefiles: pet/plus4/vic20/apple2/atari8/host. vic20 Makefile uses
+  `-C vic20-32k.cfg` (local only; didn't change shared default).
+- Build sizes: c64 7013 / pet 6988 / plus4 7159 / vic20 6994 /
+  apple2 7011 / atari.xex 7266 / host 36K mach-o.
+
+### 2026-04-23 — Phase 4.1 (commit `87e6ac5`)
+
+BBC adapter + cc65 port quirk.
+
+- `platform/plat_bbc.c` — BBC Micro, 40×25, mono. `plat_puts` rolls
+  its own via `cputcxy` loop. Why: cc65 BBC port in this toolchain
+  doesn't ship `cputsxy/gotoxy`. Noted in MAINTENANCE.md.
+- `build/Makefile.bbc` — outputs `.ssd`.
+- Same `cputsxy`-free fix applied to `8bitworkshop/presets/bbc/retroc-dungeon.c`.
+
+### 2026-04-23 — IDE integration (8bitworkshop repo)
+
+Not a retro-c commit; parallel work in `/Users/chrisg/github/8bitworkshop`.
+
+- `presets/<plat>/retroc-dungeon.c` for c64, pet, plus4, apple2, apple2e,
+  atari8-800, bbc. Each is a hand-concatenated game + adapter inline.
+- Filed under preset category **"retro-c cross-platform demo"**.
+- VIC-20 preset **not** shipped — demo overflows default unexpanded
+  `vic20.cfg` by ~2.5 KB. Changing default to `vic20-32k.cfg` globally
+  would affect other presets, so deferred. Revisit with `TIER_MINIMAL`.
+- Not shipped: nes, gb, atari5200, atari7800, c128 (Phase 5 or later).
+
+### 2026-04-23 — Maintenance docs
+
+- Added `docs/MAINTENANCE.md` — golden rules, build matrix, test
+  checklist, debugging guide, procedure for adding features and new
+  adapters, procedure for regenerating IDE single-file demos.
+
+### To-do (next passes)
+
+- **Phase 5**: GB (GBDK tile-based adapter) + NES (cc65 nes nametable).
+  Real portability test — API leaks 40×25 assumptions crack here.
+- **Phase 6**: delete `ARCHIVE_pre_refactor/` after every salvageable
+  asset has been migrated (charset-c64 data, maze.h gen, cpm if kept).
+- Game features: procedural map gen, multi-room via stairs (G_STAIRS
+  already parsed), enemy type table, inventory, title/menu, sound via
+  `plat_beep`.
+- VIC-20 revisit: add `TIER_MINIMAL` flag shrinking tables so
+  unexpanded build fits.
+- `scripts/bundle-ide-demo.py` to regenerate single-file IDE presets
+  from `game/` + `platform/plat_<plat>.c` automatically.
