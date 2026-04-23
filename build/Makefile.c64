@@ -1,0 +1,21 @@
+# Commodore 64 — cc65
+include build/common.mk
+
+TARGET   = c64
+OUT      = dungeon-c64.prg
+SOURCES  = $(GAME_SOURCES) platform/plat_c64.c
+CC       = cl65
+CFLAGS   = -t $(TARGET) -O -Cl -I platform -I game
+
+all: $(OUT)
+
+$(OUT): $(SOURCES)
+	$(CC) $(CFLAGS) -o $@ $(SOURCES)
+
+clean:
+	rm -f $(OUT) $(SOURCES:.c=.o)
+
+run: $(OUT)
+	x64sc $(OUT)
+
+.PHONY: all clean run
