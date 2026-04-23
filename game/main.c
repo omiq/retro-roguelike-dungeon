@@ -28,7 +28,54 @@ static uint8_t colour_for_glyph(glyph_t g) {
         case G_HEALTH: return COL_RED;
         case G_MAGIC:  return COL_MAGENTA;
         case G_IDOL:   return COL_YELLOW;
+        case G_BOLT:   return COL_YELLOW;
         default:       return COL_WHITE;
+    }
+}
+
+/* Last movement direction — updated every time the player steps, used by
+ * the fireball spell. Defaults to "right" so the first cast goes east.
+ * Matches original dungeon_multi.c (direction_x, direction_y). */
+static int8_t direction_x = 1;
+static int8_t direction_y = 0;
+
+/* Cast fireball: costs 5 magic to start, travels along (direction_x,
+ * direction_y) animating G_BOLT through floor cells, consuming 1 magic
+ * per step, stops on non-floor, attacks that cell for 10 damage.
+ * Ported from dungeon_multi.c case 'f'. */
+static void cast_fireball(uint8_t px, uint8_t py) {
+    int16_t fx, fy;
+    glyph_t c;
+    if (player_magic <= 5) return;
+    player_magic -= 5;
+    fx = (int16_t)px + direction_x;
+    fy = (int16_t)py + direction_y;
+    while (fx >= 0 && fy >= 0 && fx < map_w && fy < map_h && player_magic > 0) {
+        c = map_get((uint8_t)fx, (uint8_t)fy);
+        /* Stop on any non-floor tile. Enemies occupy floor tiles (drawn on
+         * top) so we still pass through entity cells — bolt hits whatever
+         * is at the endpoint. */
+        if (c != G_FLOOR) break;
+        /* If an enemy sits here, stop and let attack() resolve. */
+        if (entity_at((uint8_t)fx, (uint8_t)fy) >= 0) break;
+        plat_putc((uint8_t)fx, (uint8_t)fy, G_BOLT, COL_YELLOW);
+        plat_delay_ms(80);
+        /* Restore underlying cell. */
+        plat_putc((uint8_t)fx, (uint8_t)fy, c, colour_for_glyph(c));
+        player_magic--;
+        fx += direction_x;
+        fy += direction_y;
+    }
+    /* Impact: attack whatever entity is there (if any). 10 damage matches
+     * original attack(10, fx, fy). */
+    if (fx >= 0 && fy >= 0 && fx < map_w && fy < map_h) {
+        int8_t ei = entity_at((uint8_t)fx, (uint8_t)fy);
+        if (ei >= 0 && entities[ei].alive && entities[ei].g == G_ENEMY) {
+            uint8_t killed = entity_player_attack(px, py,
+                                                  (uint8_t)fx, (uint8_t)fy, 10);
+            if (killed) plat_putc((uint8_t)fx, (uint8_t)fy,
+                                  G_CORPSE, colour_for_glyph(G_CORPSE));
+        }
     }
 }
 
@@ -192,10 +239,15 @@ int main(void) {
         key = plat_key_wait();
         nx = px; ny = py;
         switch (key) {
-            case K_UP:    if (py > 0)         ny = py - 1; break;
-            case K_DOWN:  if (py < map_h - 1) ny = py + 1; break;
-            case K_LEFT:  if (px > 0)         nx = px - 1; break;
-            case K_RIGHT: if (px < map_w - 1) nx = px + 1; break;
+            case K_UP:    if (py > 0)         ny = py - 1;
+                          direction_x = 0; direction_y = -1; break;
+            case K_DOWN:  if (py < map_h - 1) ny = py + 1;
+                          direction_x = 0; direction_y =  1; break;
+            case K_LEFT:  if (px > 0)         nx = px - 1;
+                          direction_x = -1; direction_y = 0; break;
+            case K_RIGHT: if (px < map_w - 1) nx = px + 1;
+                          direction_x =  1; direction_y = 0; break;
+            case K_FIRE:  cast_fireball(px, py); break;
             case K_QUIT:  plat_shutdown(); return 0;
             default: continue;
         }

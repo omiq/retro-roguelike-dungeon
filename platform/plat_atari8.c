@@ -7,7 +7,7 @@
 #include "platform.h"
 
 static const uint8_t glyph_native[G_COUNT] = {
-    '.','#','+','@','E','$','!','/','>','%', ' ','*', 'h','m','&'
+    '.','#','+','@','E','$','!','/','>','%', ' ','*', 'h','m','&', '*'
 };
 
 void plat_init(void) { clrscr(); }
